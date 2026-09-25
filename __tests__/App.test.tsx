@@ -32,6 +32,11 @@ jest.mock('../src/lib/addons/api', () => ({
   fetchSubtitles: jest.fn().mockResolvedValue([]),
 }));
 
+// Player/Streams screens import NetInfo (docs/03 §7's Wi-Fi/mobile handling)
+// — its native module doesn't exist under Jest, so use the package's own
+// official mock to keep the app-render test offline and deterministic.
+jest.mock('@react-native-community/netinfo', () => require('@react-native-community/netinfo/jest/netinfo-mock.js'));
+
 import App from '../App';
 
 test('renders correctly', async () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMovie } from '../hooks/useMovie';
@@ -84,6 +84,9 @@ export function MovieDetailsScreen({ route, navigation }: Props) {
           <Button
             label="Find Streams"
             variant="secondary"
+            // Android-only in Phase 3 — no native torrent/player path exists
+            // on iOS/Web yet (docs/03-Phase3-Torrent-Streaming.md §7).
+            disabled={Platform.OS !== 'android'}
             onPress={() => navigation.navigate('MovieStreams', { id: movie.id })}
           />
         </View>

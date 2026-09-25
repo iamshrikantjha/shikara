@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Platform } from 'react-native';
 import type { StreamQuality } from '../lib/types';
 import { getJSON, setJSON, StorageKeys } from '../lib/storage';
+import { TorrentModule } from '../lib/native/TorrentModule';
 
 export type SubtitleLanguage = 'off' | 'en' | 'hi' | 'es' | 'fr';
 export type AudioLanguage = 'auto' | 'en' | 'hi' | 'es' | 'fr';
@@ -94,14 +96,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSettings(prev => ({ ...prev, torrent: { ...prev.torrent, maxCacheSizeGB } }));
   }, []);
 
-  // No native torrent module exists yet (docs/03 §5) — there is no real
-  // streaming buffer on disk to clear. This is a placeholder that will call
-  // into TorrentModule's cache-eviction once that lands; kept async so the
-  // eventual native call doesn't change this function's shape.
+  // Deletes the native torrent module's on-disk streaming buffer (docs/03
+  // §3.3/§5). No-ops on iOS/Web, where there's no torrent engine at all
+  // (docs §7) — never throws TorrentModule's Android-only guard error here.
   const clearStreamingCache = useCallback(async () => {
     setClearingCache(true);
     try {
-      await Promise.resolve();
+      if (Platform.OS === 'android') {
+        await TorrentModule.clearCache();
+      }
     } finally {
       setClearingCache(false);
     }

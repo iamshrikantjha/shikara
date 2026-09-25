@@ -73,11 +73,39 @@ Tracks implementation of `docs/03-Phase3-Torrent-Streaming.md` (v2.1). Ordered b
   - Autoplay-next-episode's *navigation* (finding and jumping to the next episode) is NOT implemented here — only the prerequisite `lastStream` write is. Item 6 owns the actual "on end, reuse lastStream for the next episode" flow.
   - Byte-offset-from-seek-time is a linear estimate (`PlayerBridge.notifySeekPosition`), not exact demuxer-level byte mapping — a standard, accepted approximation for VBR content
 
-## 6. Lifecycle, history, autoplay (ties everything together)
-- [ ] Periodic `WatchHistoryItem.progressSeconds` writes (5–10s cadence), including aborted/error sessions
-- [ ] `LibraryItem.lastStream` write on stream selection
-- [ ] Pause-on-background / resume-on-foreground, single paused-session eviction rule
-- [ ] Switch Source → resume from last known position
-- [ ] Autoplay next episode → reuse `lastStream` addon+quality, fallback to Streams screen
-- [ ] Wi-Fi↔mobile handover pause+reconfirm
-- [ ] Confirm iOS/Web buttons stay disabled
+## 6. Lifecycle, history, autoplay ✅ done
+- [x] Periodic `WatchHistoryItem.progressSeconds` writes (item 5) — unchanged, already covers aborted/error sessions
+- [x] `LibraryItem.lastStream` write on stream selection (item 5) — **fixed in this pass**: it was writing under the composite episode `mediaId` instead of the series' `LibraryItem` id, which would have made autoplay's lookup always miss. `usePlayerSessionOptions` now takes a separate `libraryMediaId` (series id for episodes, same as `mediaId` for movies) so `setLastStream`/autoplay's lookup agree.
+- [x] Pause-on-background / resume-on-foreground — `AppState` listener added to `usePlayerSession` (previously only paused on Player unmount, not actual app backgrounding)
+- [x] Single paused-session eviction rule — new `src/features/player/pausedTorrentRegistry.ts`; `notePlayingTorrent()` stops+removes whatever was previously paused before a new stream starts
+- [x] Switch Source → resume from last known position (item 5) — unchanged
+- [x] Autoplay next episode — new `src/features/player/hooks/useAutoplayNextEpisode.ts`: on `playbackState === 'ended'`, finds the next episode, tries `lastStream`'s addon+quality via `fetchMergedStreams`, `navigation.replace`s straight into `Player` on a match, else falls back to `EpisodeStreams` for a manual pick
+- [x] Wi-Fi↔mobile handling — added `@react-native-community/netinfo`; `usePlayerSession` confirms before starting a stream on cellular when `downloadMode === 'wifiOnly'`, and pauses + re-confirms on a mid-session Wi-Fi→cellular handover (new `src/lib/network.ts`)
+- [x] **Fixed a real gap**: "Find Streams"/"Play" were **not actually disabled on iOS/Web** despite the confirmed decision — `MovieDetailsScreen`/`EpisodeDetailsScreen` never had the `Platform.OS !== 'android'` guard. Added now.
+- [x] Wired `SettingsContext.clearStreamingCache()` to the real `TorrentModule.clearCache()` (was a no-op stub since item 3, before the native module existed)
+- [x] Addon install dedup (item 1's optional leftover) — `AddonsContext.installAddon` now also rejects a second install once the fetched manifest's `id` matches an already-installed addon, not just an exact `manifestUrl` match
+- [x] Verified: `tsc --noEmit`, `eslint` (only the same pre-existing inline-style warnings), `jest` all pass (added `@react-native-community/netinfo`'s official jest mock to `__tests__/App.test.tsx`, same pattern as the addon API mocks)
+- [x] Verified: `./gradlew :app:compileDebugKotlin` still `BUILD SUCCESSFUL` after the NetInfo autolink
+- [ ] **Not runtime-tested**, same standing caveat as items 4/5 — background/foreground transitions, the cellular-handover listener, and autoplay's next-episode lookup are unverified beyond compiling/type-checking correctly.
+
+---
+
+## 7. Default test addon preload + manifest-parsing bug fix ✅ done
+Prompted by the user wanting real-world addons (from a personal `cheatsheet.txt`) preloaded for device testing, on top of Cinemeta.
+
+- [x] **Fixed a real, previously-undiscovered bug** in `src/lib/addons/manifest.ts`: `fetchManifest` only recognized `resources` entries shaped as plain strings (`"stream"`). Live-checking the addon URLs below found that Torrentio, Comet, HdHub, MediaFusion, and TorrentClaw all use the modern Stremio manifest format where `resources` is an array of **objects** (`{"name": "stream", "types": [...], "idPrefixes": [...]}`). The old code silently normalized these to `resources: []` — the addon would "install successfully" (validation only checks `id`/`name`/`resources`-is-an-array) but then be permanently invisible to every capability check, no error anywhere. New `parseResources()` handles both forms; verified against the real live manifests (see below) — confirmed extracting `["stream"]`, `["stream","catalog"]`, `["catalog","stream","meta"]`, etc. correctly where it previously would have produced `[]`.
+- [x] Added `DEFAULT_SEED_ADDON_URLS` (12 URLs) to `src/lib/addons/defaults.ts`
+- [x] Added a one-time seeding `useEffect` in `AddonsContext.tsx`, gated by a new `StorageKeys.addonsSeeded` persisted flag — so removing a seeded addon sticks across app restarts; best-effort per addon (a URL down at first-launch time just doesn't get added, doesn't retry later)
+- [x] Live-checked all 12 URLs via `curl` — **11/12 reachable**, `https://addon-marvel.gonp.deno.net/manifest.json` returned `503` (likely a cold/sleeping free-tier deploy) at check time. Included anyway since seeding is best-effort/silent; may start working on a later real device run, but won't retroactively seed after the one-time flag is set.
+- [x] Verified: `tsc --noEmit`, `eslint`, `jest` all pass; separately verified `parseResources()`'s logic against the real fetched JSON of 6 of these addons in a throwaway script (not committed) — matches expected output exactly
+- [ ] **Not runtime-tested** — same standing caveat as items 4–6: nothing has installed these addons or exercised the Streams screen against them on an actual device/emulator.
+
+Seed list (from `cheatsheet.txt`): Torrentio, Netflix-catalog-addon, Comet, ThePirateBay+, AIOStreams, top-streaming, HdHub, TorrentClaw, MediaFusion, TorrentsDB, Marvel catalog addon (currently down), TMDB addon.
+
+---
+
+## Remaining before Phase 3 can be called fully done
+- Actual device/emulator testing (nothing in items 4–6 has run outside compilation)
+- TV D-pad seek (`TVEventHandler`), volume slider, fullscreen toggle — deliberately deferred (item 5)
+- Visual/manual QA pass of the Streams and Player screens (no `react-native-web` target or emulator was used in this environment)
+- Subtitle hash/sync extras — deferred per the doc's "known limitation" (§4.2.2)

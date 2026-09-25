@@ -1,4 +1,4 @@
-import type { AddonCatalogEntry, AddonManifest } from '../types';
+import type { AddonCapability, AddonCatalogEntry, AddonManifest } from '../types';
 
 export class AddonManifestError extends Error {}
 
@@ -26,6 +26,24 @@ interface RawManifest {
   types?: unknown;
   catalogs?: unknown;
   idPrefixes?: unknown;
+}
+
+const KNOWN_CAPABILITIES: AddonCapability[] = ['catalog', 'meta', 'stream', 'subtitles'];
+
+// The Stremio manifest spec allows `resources` entries to be either a plain
+// capability string ("stream") or an object declaring per-resource
+// types/idPrefixes ({"name": "stream", "types": [...], "idPrefixes": [...]})
+// — real addons (Torrentio, Comet, HdHub, MediaFusion, TorrentClaw, at least)
+// use the object form. Reading only the string form silently produced an
+// empty `resources` list for every one of those addons, making them
+// invisible to supportsCapability() with no error anywhere.
+function parseResources(raw: unknown): AddonCapability[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map(entry => (typeof entry === 'string' ? entry : typeof entry === 'object' && entry !== null ? (entry as { name?: unknown }).name : undefined))
+    .filter((name): name is AddonCapability => KNOWN_CAPABILITIES.includes(name as AddonCapability));
 }
 
 function parseCatalogs(raw: unknown): AddonCatalogEntry[] {
@@ -78,10 +96,7 @@ export async function fetchManifest(manifestUrl: string): Promise<AddonManifest>
     version: typeof raw.version === 'string' ? raw.version : '0.0.0',
     description: typeof raw.description === 'string' ? raw.description : undefined,
     logo: typeof raw.logo === 'string' ? raw.logo : undefined,
-    resources: raw.resources.filter(
-      (r): r is 'catalog' | 'meta' | 'stream' | 'subtitles' =>
-        r === 'catalog' || r === 'meta' || r === 'stream' || r === 'subtitles',
-    ),
+    resources: parseResources(raw.resources),
     types: Array.isArray(raw.types) ? raw.types.filter((t): t is 'movie' | 'series' => t === 'movie' || t === 'series') : [],
     catalogs: parseCatalogs(raw.catalogs),
     idPrefixes: Array.isArray(raw.idPrefixes) ? raw.idPrefixes.filter((p): p is string => typeof p === 'string') : undefined,

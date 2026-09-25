@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { TorrentModule } from '../../../lib/native/TorrentModule';
-import { TorrentPriority } from '../../../lib/native/TorrentModule';
+import { AppState, Alert } from 'react-native';
+import { TorrentModule, TorrentPriority } from '../../../lib/native/TorrentModule';
 import { PlayerModule, type PlayerStateInfo } from '../../../lib/native/PlayerModule';
 import { useLibrary } from '../../../context/LibraryContext';
+import type { DownloadMode } from '../../../context/SettingsContext';
+import { isOnCellular, subscribeToCellularHandover } from '../../../lib/network';
+import { notePausedTorrent, notePlayingTorrent, noteResumedTorrent } from '../pausedTorrentRegistry';
 import type { MediaType, Stream } from '../../../lib/types';
 
 const STATUS_POLL_MS = 1000;
@@ -11,7 +14,7 @@ const HISTORY_WRITE_MS = 5000;
 const METADATA_TIMEOUT_MS = 30_000;
 const NO_PEERS_TIMEOUT_MS = 20_000;
 
-export type PlayerErrorKind = 'metadata' | 'noPeers' | 'playback';
+export type PlayerErrorKind = 'metadata' | 'noPeers' | 'playback' | 'declined';
 
 export interface TorrentStatusInfo {
   downloadSpeed: number;
@@ -20,16 +23,32 @@ export interface TorrentStatusInfo {
 }
 
 interface UsePlayerSessionOptions {
-  mediaId: string;
+  mediaId: string; // composite id used for the stream/history lookup
+  libraryMediaId: string; // the LibraryItem id (series id for episodes, same as mediaId for movies)
   type: MediaType;
   title: string;
   episodeLabel?: string;
   subtitleUrl?: string;
   subtitleLang?: string;
+  downloadMode: DownloadMode;
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function confirmCellularStart(): Promise<boolean> {
+  return new Promise(resolve => {
+    Alert.alert(
+      'Use mobile data?',
+      "You're not on Wi-Fi. Streaming will use mobile data.",
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Continue', onPress: () => resolve(true) },
+      ],
+      { onDismiss: () => resolve(false) },
+    );
+  });
 }
 
 // Waits for libtorrent to resolve which file to stream (docs §5.2's
@@ -47,9 +66,11 @@ async function pollForFileIndex(torrentId: string, isCancelled: () => boolean): 
 }
 
 // Owns the addMagnet → setFilePriority → start → load lifecycle (docs §3.2),
-// polls torrent/player state for the buffering overlay and scrub bar, and
-// writes watch position periodically (docs §8) — continuing regardless of
-// how the session ends, per docs §3.2's "no separate abandoned-session case".
+// polls torrent/player state for the buffering overlay and scrub bar, writes
+// watch position periodically (docs §8) regardless of how the session ends,
+// enforces the Wi-Fi-only setting (docs §7), and pauses on backgrounding
+// (docs §3.2) while evicting any previously paused-and-resumable torrent
+// (only one is kept at a time, per the same section).
 export function usePlayerSession(stream: Stream | undefined, options: UsePlayerSessionOptions) {
   const { history, upsertHistory, setLastStream } = useLibrary();
   const [torrentId, setTorrentId] = useState<string | null>(null);
@@ -75,12 +96,22 @@ export function usePlayerSession(stream: Stream | undefined, options: UsePlayerS
 
     async function start() {
       try {
+        if (stream!.type !== 'direct' && options.downloadMode === 'wifiOnly' && (await isOnCellular())) {
+          const proceed = await confirmCellularStart();
+          if (cancelled) return;
+          if (!proceed) {
+            setError('declined');
+            return;
+          }
+        }
+
         if (stream!.type === 'direct') {
           PlayerModule.loadDirect(stream!.url, options.subtitleUrl ?? null, options.subtitleLang ?? null);
         } else {
           const id = await TorrentModule.addMagnet(stream!.url);
           if (cancelled) return;
           setTorrentId(id);
+          notePlayingTorrent(id);
 
           const fileIdx = stream!.behaviorHints.fileIdx;
           if (fileIdx !== undefined) {
@@ -96,7 +127,7 @@ export function usePlayerSession(stream: Stream | undefined, options: UsePlayerS
           }
           PlayerModule.load(id, resolvedFileIndex, options.subtitleUrl ?? null, options.subtitleLang ?? null);
         }
-        setLastStream(options.mediaId, stream!.source, stream!.quality ?? 'sd');
+        setLastStream(options.libraryMediaId, stream!.source, stream!.quality ?? 'sd');
       } catch {
         setError('metadata');
       }
@@ -107,7 +138,7 @@ export function usePlayerSession(stream: Stream | undefined, options: UsePlayerS
     return () => {
       cancelled = true;
     };
-  }, [stream, options.mediaId, options.subtitleUrl, options.subtitleLang, setLastStream]);
+  }, [stream, options.libraryMediaId, options.subtitleUrl, options.subtitleLang, options.downloadMode, setLastStream]);
 
   // Buffering overlay data (docs §3.2) — download speed/peers/percent.
   useEffect(() => {
@@ -178,12 +209,53 @@ export function usePlayerSession(stream: Stream | undefined, options: UsePlayerS
     }
   }, [playerState?.error]);
 
+  // Network hands over Wi-Fi → mobile data mid-download while "Wi-Fi only"
+  // is set: pause and re-show the same confirmation dialog, never continue
+  // silently (docs §7).
+  useEffect(() => {
+    if (!torrentId || options.downloadMode !== 'wifiOnly') return;
+    const unsubscribe = subscribeToCellularHandover(() => {
+      TorrentModule.pause(torrentId);
+      notePausedTorrent(torrentId);
+      Alert.alert('Continue on mobile data?', 'Your Wi-Fi connection was lost. Continuing will use mobile data.', [
+        { text: 'Pause', style: 'cancel' },
+        {
+          text: 'Continue',
+          onPress: () => {
+            TorrentModule.resume(torrentId);
+            noteResumedTorrent(torrentId);
+          },
+        },
+      ]);
+    });
+    return unsubscribe;
+  }, [torrentId, options.downloadMode]);
+
+  // App backgrounding pauses (not stops/removes) the active torrent, and
+  // resumes it on foreground — docs §3.2's background lifecycle decision.
+  useEffect(() => {
+    if (!torrentId) return;
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        TorrentModule.pause(torrentId);
+        notePausedTorrent(torrentId);
+      } else if (nextState === 'active') {
+        TorrentModule.resume(torrentId);
+        noteResumedTorrent(torrentId);
+      }
+    });
+    return () => subscription.remove();
+  }, [torrentId]);
+
   // Leaving the Player pauses (not stops/removes) the torrent — docs §3.2's
-  // background lifecycle decision. App-background detection is item 6's job;
-  // this covers navigating away, which is the common case today.
+  // background lifecycle decision, so returning to the same Player resumes
+  // instantly rather than re-buffering from scratch.
   useEffect(() => {
     return () => {
-      if (torrentId) TorrentModule.pause(torrentId);
+      if (torrentId) {
+        TorrentModule.pause(torrentId);
+        notePausedTorrent(torrentId);
+      }
       PlayerModule.stop();
     };
   }, [torrentId]);

@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import type { AddonCapability, InstalledAddon } from '../lib/types';
 import { supportsCapability } from '../lib/types';
 import { fetchManifest } from '../lib/addons/manifest';
-import { CINEMETA_MANIFEST_URL, defaultInstalledAddons } from '../lib/addons/defaults';
+import { CINEMETA_MANIFEST_URL, DEFAULT_SEED_ADDON_URLS, defaultInstalledAddons } from '../lib/addons/defaults';
 import { getJSON, setJSON, StorageKeys } from '../lib/storage';
 
 interface AddonsContextValue {
@@ -46,6 +46,32 @@ export function AddonsProvider({ children }: { children: React.ReactNode }) {
       });
   }, []);
 
+  // One-time preload of a curated testing addon set (defaults.ts) — gated by
+  // a persisted flag so a user who removes one never has it silently
+  // reappear on a later launch. Best-effort per addon: an unreachable URL
+  // right now simply doesn't get added, same as any failed manual install.
+  useEffect(() => {
+    if (getJSON(StorageKeys.addonsSeeded, false)) {
+      return;
+    }
+    setJSON(StorageKeys.addonsSeeded, true);
+
+    DEFAULT_SEED_ADDON_URLS.forEach(url => {
+      fetchManifest(url)
+        .then(manifest => {
+          setAddons(prev => {
+            if (prev.some(a => a.manifestUrl === url || a.manifest.id === manifest.id)) {
+              return prev;
+            }
+            return [...prev, { manifestUrl: url, manifest, enabled: true }];
+          });
+        })
+        .catch(() => {
+          // Unreachable right now — best-effort seeding, no error surfaced.
+        });
+    });
+  }, []);
+
   const supports = useCallback(
     (capability: AddonCapability) => addons.filter(a => supportsCapability(a, capability)),
     [addons],
@@ -63,6 +89,13 @@ export function AddonsProvider({ children }: { children: React.ReactNode }) {
       setInstalling(true);
       try {
         const manifest = await fetchManifest(trimmed);
+        // The URL check above only catches an exact duplicate string — the
+        // same addon reachable via two different URL forms (trailing slash,
+        // http/https, a regenerated Comet/MediaFusion config URL) is only
+        // detectable once we know its declared id.
+        if (addons.some(a => a.manifest.id === manifest.id)) {
+          return { ok: false, error: 'This addon is already installed.' };
+        }
         setAddons(prev => [...prev, { manifestUrl: trimmed, manifest, enabled: true }]);
         return { ok: true };
       } catch (err) {

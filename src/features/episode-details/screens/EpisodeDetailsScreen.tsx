@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSeason } from '../../season/hooks/useSeason';
 import { RemoteImage } from '../../../components/RemoteImage';
@@ -50,6 +50,8 @@ export function EpisodeDetailsScreen({ route, navigation }: Props) {
             <Button
               label="Play"
               variant="secondary"
+              // Android-only in Phase 3 (docs/03-Phase3-Torrent-Streaming.md §7).
+              disabled={Platform.OS !== 'android'}
               onPress={() => navigation.navigate('EpisodeStreams', { id, season: seasonNumber, episode: episodeNumber })}
             />
             <Button label={watched ? 'Watched ✓' : 'Mark as Watched'} onPress={() => setWatched(w => !w)} />

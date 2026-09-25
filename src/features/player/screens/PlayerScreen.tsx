@@ -4,12 +4,14 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useStreams } from '../../streams/hooks/useStreams';
 import { useSubtitleAddons } from '../hooks/useSubtitles';
 import { usePlayerSession } from '../hooks/usePlayerSession';
+import { useAutoplayNextEpisode } from '../hooks/useAutoplayNextEpisode';
 import { useMovie } from '../../movie-details/hooks/useMovie';
 import { useSeries } from '../../series-details/hooks/useSeries';
 import { TorrentPlayerView } from '../../../lib/native/TorrentPlayerView';
 import { PlayerModule } from '../../../lib/native/PlayerModule';
 import { mergeSubtitleTracks } from '../../../lib/addons/merge';
 import { Button } from '../../../components/Button';
+import { useSettings } from '../../../context/SettingsContext';
 import type { RootStackParamList } from '../../../navigation/routes';
 import { spacing, themeTokens } from '../../../styles/tokens';
 import { useTheme } from '../../../context/ThemeContext';
@@ -63,13 +65,26 @@ export function PlayerScreen({ route, navigation }: Props) {
   const { data: subtitleAddonResult } = useSubtitleAddons(type, mediaId);
   const mergedSubtitles = mergeSubtitleTracks([stream?.subtitles ?? [], subtitleAddonResult?.items ?? []]);
 
+  const { torrent } = useSettings();
+
   const { torrentStatus, playerState, error } = usePlayerSession(stream, {
     mediaId,
+    libraryMediaId: episodeParts ? episodeParts.seriesId : mediaId,
     type,
     title: title ?? 'Untitled',
     episodeLabel,
     subtitleUrl: selectedSubtitle?.url,
     subtitleLang: selectedSubtitle?.lang,
+    downloadMode: torrent.downloadMode,
+  });
+
+  useAutoplayNextEpisode({
+    seriesId: episodeParts?.seriesId ?? '',
+    season: episodeParts?.season ?? 0,
+    episode: episodeParts?.episode ?? 0,
+    series,
+    playbackState: playerState?.playbackState,
+    navigation,
   });
 
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -118,7 +133,9 @@ export function PlayerScreen({ route, navigation }: Props) {
         ? 'This torrent could not be resolved.'
         : error === 'noPeers'
           ? 'No peers found for this source.'
-          : 'Playback failed for this source.';
+          : error === 'declined'
+            ? 'Streaming needs Wi-Fi or your permission to use mobile data.'
+            : 'Playback failed for this source.';
     return (
       <View style={styles.container}>
         <View style={styles.center}>
