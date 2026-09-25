@@ -1,28 +1,35 @@
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { queryClient } from '../lib/query-client';
-import { MOCK_CONTINUE_WATCHING } from '../lib/mock-data/mockApi';
+import { queryPersister } from '../lib/query-persister';
 import { ThemeProvider } from '../context/ThemeContext';
 import { LibraryProvider } from '../context/LibraryContext';
 import { AddonsProvider } from '../context/AddonsContext';
-import { DevToggleProvider } from '../context/DevToggleContext';
+
+const persistOptions = {
+  persister: queryPersister,
+  maxAge: 7 * 24 * 60 * 60_000,
+};
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={styles.fill}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
+        <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
           <ThemeProvider>
-            <DevToggleProvider>
-              <LibraryProvider initialHistory={MOCK_CONTINUE_WATCHING}>
-                <AddonsProvider>{children}</AddonsProvider>
-              </LibraryProvider>
-            </DevToggleProvider>
+            <LibraryProvider>
+              <AddonsProvider>{children}</AddonsProvider>
+            </LibraryProvider>
           </ThemeProvider>
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+});

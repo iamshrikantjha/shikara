@@ -9,15 +9,16 @@ interface MediaCardProps {
   media: Media;
   onPress: () => void;
   onLongPress?: () => void;
+  onFocus?: () => void;
   width?: number;
 }
 
-export function MediaCard({ media, onPress, onLongPress, width = 120 }: MediaCardProps) {
+export function MediaCard({ media, onPress, onLongPress, onFocus, width = 120 }: MediaCardProps) {
   const { resolvedTheme } = useTheme();
   const t = themeTokens[resolvedTheme];
 
   return (
-    <Focusable onPress={onPress} onLongPress={onLongPress} style={{ width }}>
+    <Focusable onPress={onPress} onLongPress={onLongPress} onFocus={onFocus} style={{ width }}>
       <View style={[styles.poster, { borderColor: t.border, backgroundColor: t.skeleton }]}>
         <Text style={styles.typeBadge}>{media.type === 'movie' ? 'Movie' : 'Series'}</Text>
       </View>

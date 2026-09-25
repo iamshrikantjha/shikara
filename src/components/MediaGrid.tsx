@@ -8,6 +8,8 @@ interface MediaGridProps {
   items: Media[];
   onPressItem: (media: Media) => void;
   onLongPressItem?: (media: Media) => void;
+  onFocusItem?: (media: Media) => void;
+  onEndReached?: () => void;
   ListEmptyComponent?: React.ReactElement;
   ListFooterComponent?: React.ReactElement;
 }
@@ -16,6 +18,8 @@ export function MediaGrid({
   items,
   onPressItem,
   onLongPressItem,
+  onFocusItem,
+  onEndReached,
   ListEmptyComponent,
   ListFooterComponent,
 }: MediaGridProps) {
@@ -37,9 +41,14 @@ export function MediaGrid({
             width={width / numColumns - spacing.md * 1.5}
             onPress={() => onPressItem(item)}
             onLongPress={onLongPressItem ? () => onLongPressItem(item) : undefined}
+            onFocus={onFocusItem ? () => onFocusItem(item) : undefined}
           />
         </View>
       )}
+      // Fetch the next page before the user physically reaches the bottom
+      // (docs/02-Phase2-API-Integration.md §7.3 "prefetching the next Discover page").
+      onEndReached={onEndReached}
+      onEndReachedThreshold={0.5}
       ListEmptyComponent={ListEmptyComponent}
       ListFooterComponent={ListFooterComponent}
     />

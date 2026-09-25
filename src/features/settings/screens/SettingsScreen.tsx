@@ -1,12 +1,11 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Tabs } from '../../../components/Tabs';
 import { Button } from '../../../components/Button';
 import { useTheme } from '../../../context/ThemeContext';
-import { useDevToggle } from '../../../context/DevToggleContext';
 import { useLibrary } from '../../../context/LibraryContext';
 import type { MainTabParamList, RootStackParamList } from '../../../navigation/routes';
 import { spacing, themeTokens } from '../../../styles/tokens';
@@ -37,8 +36,7 @@ function Row({ label, onPress, children }: { label: string; onPress?: () => void
 
 export function SettingsScreen({ navigation }: Props) {
   const { preference, setPreference } = useTheme();
-  const { simulateError, setSimulateErrorEnabled } = useDevToggle();
-  const { resetMockData } = useLibrary();
+  const { resetLocalData } = useLibrary();
   const t = themeTokens.light;
 
   return (
@@ -63,10 +61,7 @@ export function SettingsScreen({ navigation }: Props) {
       </Row>
 
       <Section title="Developer">
-        <Row label="Simulate error state">
-          <Switch value={simulateError} onValueChange={setSimulateErrorEnabled} />
-        </Row>
-        <Button label="Reset mock library/history" onPress={resetMockData} />
+        <Button label="Reset local data (Library/History)" onPress={resetLocalData} />
       </Section>
 
       <Row label="About" onPress={() => navigation.navigate('SettingsAbout')}>

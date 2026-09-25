@@ -7,6 +7,9 @@ import { useHomeRows } from '../hooks/useHomeRows';
 import { MediaRow } from '../../../components/MediaRow';
 import { LoadingSkeleton } from '../../../components/LoadingSkeleton';
 import { ErrorState } from '../../../components/ErrorState';
+import { EmptyState } from '../../../components/EmptyState';
+import { useAddons } from '../../../context/AddonsContext';
+import { usePrefetchMeta } from '../../../lib/addons/usePrefetchMeta';
 import type { Media } from '../../../lib/types';
 import type { MainTabParamList, RootStackParamList } from '../../../navigation/routes';
 import { spacing } from '../../../styles/tokens';
@@ -20,6 +23,8 @@ type Props = CompositeScreenProps<
 export function HomeScreen({ navigation }: Props) {
   const { data, isLoading, isError, refetch } = useHomeRows();
   const { history, addToLibrary, removeFromLibrary, isInLibrary } = useLibrary();
+  const { supports } = useAddons();
+  const prefetchMeta = usePrefetchMeta();
 
   function openMedia(media: Media) {
     if (media.type === 'movie') {
@@ -37,6 +42,16 @@ export function HomeScreen({ navigation }: Props) {
     }
   }
 
+  if (supports('catalog').length === 0) {
+    return (
+      <EmptyState
+        message="No catalog addons installed"
+        actionLabel="Open Addon Manager"
+        onAction={() => navigation.navigate('SettingsAddons')}
+      />
+    );
+  }
+
   if (isLoading) {
     return <LoadingSkeleton count={5} height={160} />;
   }
@@ -48,9 +63,14 @@ export function HomeScreen({ navigation }: Props) {
   return (
     <ScrollView>
       <View style={styles.banner}>
-        <Text style={styles.bannerTitle}>{data.trending[0]?.title ?? 'Featured'}</Text>
-        <Text numberOfLines={2}>{data.trending[0]?.overview}</Text>
+        <Text style={styles.bannerTitle}>{data.trending[0]?.title ?? data.popularMovies[0]?.title ?? 'Featured'}</Text>
       </View>
+
+      {data.failedAddonNames.length > 0 && (
+        <Text style={styles.partialFailure}>
+          Some sources are unavailable: {data.failedAddonNames.join(', ')}
+        </Text>
+      )}
 
       {history.length > 0 && (
         <View style={styles.section}>
@@ -69,14 +89,22 @@ export function HomeScreen({ navigation }: Props) {
         items={data.popularMovies}
         onPressItem={openMedia}
         onLongPressItem={toggleLibrary}
+        onFocusItem={prefetchMeta}
       />
       <MediaRow
         title="Popular Series"
         items={data.popularSeries}
         onPressItem={openMedia}
         onLongPressItem={toggleLibrary}
+        onFocusItem={prefetchMeta}
       />
-      <MediaRow title="Trending" items={data.trending} onPressItem={openMedia} onLongPressItem={toggleLibrary} />
+      <MediaRow
+        title="Trending"
+        items={data.trending}
+        onPressItem={openMedia}
+        onLongPressItem={toggleLibrary}
+        onFocusItem={prefetchMeta}
+      />
     </ScrollView>
   );
 }
@@ -98,5 +126,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: spacing.sm,
+  },
+  partialFailure: {
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    fontSize: 12,
   },
 });

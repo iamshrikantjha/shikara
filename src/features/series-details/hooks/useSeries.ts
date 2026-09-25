@@ -1,11 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
-import { getSeries } from '../../../lib/mock-data/mockApi';
-import { queryKeys } from '../../../lib/query-client';
+import { useAddons } from '../../../context/AddonsContext';
+import { fetchMergedMeta } from '../../../lib/addons/queries';
+import { metaQueryKey, staleTimeFor } from '../../../lib/query-client';
+import type { Series } from '../../../lib/types';
 
 export function useSeries(id: string) {
+  const { addons, supports } = useAddons();
+  const metaAddons = supports('meta');
+
   return useQuery({
-    queryKey: queryKeys.series(id),
-    queryFn: () => getSeries(id),
-    staleTime: 24 * 60 * 60_000,
+    queryKey: metaQueryKey('series', id),
+    queryFn: () => fetchMergedMeta(addons, 'series', id) as Promise<Series | null>,
+    staleTime: staleTimeFor.meta,
+    enabled: metaAddons.length > 0,
   });
 }

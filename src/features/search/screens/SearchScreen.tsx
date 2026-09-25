@@ -4,6 +4,7 @@ import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSearch } from '../hooks/useSearch';
+import { usePrefetchMeta } from '../../../lib/addons/usePrefetchMeta';
 import { SearchInput } from '../../../components/SearchInput';
 import { MediaGrid } from '../../../components/MediaGrid';
 import { LoadingSkeleton } from '../../../components/LoadingSkeleton';
@@ -24,6 +25,7 @@ export function SearchScreen({ navigation }: Props) {
   const [text, setText] = useState('');
   const [recent, setRecent] = useState<string[]>([]);
   const { data, isLoading, isError, refetch, debounced } = useSearch(text);
+  const prefetchMeta = usePrefetchMeta();
 
   function runQuery(value: string) {
     setText(value);
@@ -45,7 +47,8 @@ export function SearchScreen({ navigation }: Props) {
   }
 
   const showRecent = text.trim().length === 0;
-  const results = data ?? [];
+  const results = data?.items ?? [];
+  const failedAddonNames = data?.failedAddonNames ?? [];
 
   return (
     <View style={styles.container}>
@@ -82,13 +85,16 @@ export function SearchScreen({ navigation }: Props) {
         </View>
       )}
 
+      {!showRecent && failedAddonNames.length > 0 && (
+        <Text style={styles.partialFailure}>Some sources are unavailable: {failedAddonNames.join(', ')}</Text>
+      )}
       {!showRecent && isLoading && <LoadingSkeleton count={6} height={140} />}
       {!showRecent && isError && <ErrorState onRetry={() => refetch()} />}
       {!showRecent && !isLoading && !isError && results.length === 0 && (
         <EmptyState message={`No results for "${debounced}"`} />
       )}
       {!showRecent && !isLoading && !isError && results.length > 0 && (
-        <MediaGrid items={results} onPressItem={openMedia} />
+        <MediaGrid items={results} onPressItem={openMedia} onFocusItem={prefetchMeta} />
       )}
     </View>
   );
@@ -114,5 +120,10 @@ const styles = StyleSheet.create({
   },
   recentItem: {
     flex: 1,
+  },
+  partialFailure: {
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    fontSize: 12,
   },
 });

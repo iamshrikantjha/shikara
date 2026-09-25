@@ -8,14 +8,14 @@ import { useTheme } from '../../../context/ThemeContext';
 import { spacing, themeTokens } from '../../../styles/tokens';
 
 export function AddonManagerScreen() {
-  const { addons, installAddon, toggleAddon, removeAddon, moveAddon } = useAddons();
+  const { addons, installAddon, installing, toggleAddon, removeAddon, moveAddon } = useAddons();
   const { resolvedTheme } = useTheme();
   const t = themeTokens[resolvedTheme];
   const [url, setUrl] = useState('');
   const [installError, setInstallError] = useState<string | undefined>();
 
-  function handleInstall() {
-    const result = installAddon(url);
+  async function handleInstall() {
+    const result = await installAddon(url);
     if (!result.ok) {
       setInstallError(result.error);
       return;
@@ -31,18 +31,18 @@ export function AddonManagerScreen() {
       ) : (
         <FlatList
           data={addons}
-          keyExtractor={item => item.id}
+          keyExtractor={item => item.manifest.id}
           renderItem={({ item, index }) => (
             <View style={[styles.row, { borderColor: t.border }]}>
               <View style={styles.info}>
                 <Text style={styles.name}>
-                  {item.name} <Text style={styles.version}>v{item.version}</Text>
+                  {item.manifest.name} <Text style={styles.version}>v{item.manifest.version}</Text>
                 </Text>
                 <View style={styles.badgeRow}>
-                  {item.capabilities.length === 0 ? (
+                  {item.manifest.resources.length === 0 ? (
                     <Text style={styles.dimmed}>No declared capabilities</Text>
                   ) : (
-                    item.capabilities.map(cap => (
+                    item.manifest.resources.map(cap => (
                       <View key={cap} style={styles.badgeSpacing}>
                         <Badge label={cap} />
                       </View>
@@ -51,18 +51,18 @@ export function AddonManagerScreen() {
                 </View>
               </View>
               <View style={styles.controls}>
-                <Switch value={item.enabled} onValueChange={() => toggleAddon(item.id)} />
-                <Pressable onPress={() => moveAddon(item.id, 'up')} disabled={index === 0} hitSlop={8}>
+                <Switch value={item.enabled} onValueChange={() => toggleAddon(item.manifest.id)} />
+                <Pressable onPress={() => moveAddon(item.manifest.id, 'up')} disabled={index === 0} hitSlop={8}>
                   <Text style={{ opacity: index === 0 ? 0.3 : 1 }}>▲</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => moveAddon(item.id, 'down')}
+                  onPress={() => moveAddon(item.manifest.id, 'down')}
                   disabled={index === addons.length - 1}
                   hitSlop={8}
                 >
                   <Text style={{ opacity: index === addons.length - 1 ? 0.3 : 1 }}>▼</Text>
                 </Pressable>
-                <Pressable onPress={() => removeAddon(item.id)} hitSlop={8}>
+                <Pressable onPress={() => removeAddon(item.manifest.id)} hitSlop={8}>
                   <Text>✕</Text>
                 </Pressable>
               </View>
@@ -80,12 +80,13 @@ export function AddonManagerScreen() {
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <Button label="Install" onPress={handleInstall} />
+        <Button label={installing ? 'Installing…' : 'Install'} onPress={handleInstall} disabled={installing} />
       </View>
       {installError && <Text style={styles.error}>{installError}</Text>}
       <Text style={[styles.dimmed, styles.footnote]}>
-        Phase 1 only validates the URL isn't empty — real manifest fetch/validation is wired in
-        Phase 2. There is no addon marketplace here: installing means pasting a manifest URL.
+        Installing fetches and validates the addon's manifest.json directly from the URL — no
+        marketplace, no backend in between. Capability badges above come straight from what each
+        manifest declares.
       </Text>
     </View>
   );

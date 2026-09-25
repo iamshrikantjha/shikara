@@ -84,21 +84,48 @@ export interface WatchHistoryItem {
 
 export type AddonCapability = 'catalog' | 'meta' | 'stream' | 'subtitles';
 
-export interface InstalledAddon {
+export interface AddonCatalogEntry {
+  type: MediaType;
+  id: string;
+  name: string;
+  extraSupported: string[];
+  genreOptions?: string[];
+}
+
+// Parsed shape of an addon's manifest.json (docs/02-Phase2-API-Integration.md §2.1).
+export interface AddonManifest {
   id: string;
   name: string;
   version: string;
-  manifestUrl: string;
+  description?: string;
   logo?: string;
-  capabilities: AddonCapability[];
+  resources: AddonCapability[];
+  types: MediaType[];
+  catalogs: AddonCatalogEntry[];
+  idPrefixes?: string[];
+}
+
+export interface InstalledAddon {
+  manifestUrl: string;
+  manifest: AddonManifest;
   enabled: boolean;
+}
+
+// First-class shape for the `subtitles` capability (docs/02 §5) — defined now,
+// consumed starting in Phase 3.
+export interface SubtitleTrack {
+  id: string;
+  lang: string;
+  url: string;
+  source: string;
 }
 
 export type SortOption = 'popularity' | 'newest' | 'rating' | 'az';
 
+// Route by manifest, never by addon identity — docs/02-Phase2-API-Integration.md §2.3.
 export function supportsCapability(
   addon: InstalledAddon,
   capability: AddonCapability,
 ): boolean {
-  return addon.enabled && addon.capabilities.includes(capability);
+  return addon.enabled && addon.manifest.resources.includes(capability);
 }

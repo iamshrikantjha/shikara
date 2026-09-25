@@ -9,9 +9,10 @@ interface MediaRowProps {
   items: Media[];
   onPressItem: (media: Media) => void;
   onLongPressItem?: (media: Media) => void;
+  onFocusItem?: (media: Media) => void;
 }
 
-export function MediaRow({ title, items, onPressItem, onLongPressItem }: MediaRowProps) {
+export function MediaRow({ title, items, onPressItem, onLongPressItem, onFocusItem }: MediaRowProps) {
   if (items.length === 0) {
     return null;
   }
@@ -29,6 +30,7 @@ export function MediaRow({ title, items, onPressItem, onLongPressItem }: MediaRo
               media={item}
               onPress={() => onPressItem(item)}
               onLongPress={onLongPressItem ? () => onLongPressItem(item) : undefined}
+              onFocus={onFocusItem ? () => onFocusItem(item) : undefined}
             />
           </View>
         )}

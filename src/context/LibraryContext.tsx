@@ -1,5 +1,6 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { LibraryItem, MediaType, WatchHistoryItem } from '../lib/types';
+import { getJSON, setJSON, StorageKeys } from '../lib/storage';
 
 interface LibraryContextValue {
   items: LibraryItem[];
@@ -8,22 +9,24 @@ interface LibraryContextValue {
   removeFromLibrary: (mediaId: string) => void;
   history: WatchHistoryItem[];
   removeFromHistory: (mediaId: string) => void;
-  resetMockData: () => void;
+  resetLocalData: () => void;
 }
 
 const LibraryContext = createContext<LibraryContextValue | undefined>(undefined);
 
-// Phase 1: in-memory only (resets on app restart, per 01-Phase1-UI-Navigation.md §10).
-// Phase 2 swaps this for MMKV/SQLite-backed persistence without changing the API shape.
-export function LibraryProvider({
-  initialHistory,
-  children,
-}: {
-  initialHistory: WatchHistoryItem[];
-  children: React.ReactNode;
-}) {
-  const [items, setItems] = useState<LibraryItem[]>([]);
-  const [history, setHistory] = useState<WatchHistoryItem[]>(initialHistory);
+// Device-only persistence via MMKV — no account, no sync, ever
+// (docs/02-Phase2-API-Integration.md §1 "Explicitly not part of this project").
+export function LibraryProvider({ children }: { children: React.ReactNode }) {
+  const [items, setItems] = useState<LibraryItem[]>(() => getJSON(StorageKeys.library, []));
+  const [history, setHistory] = useState<WatchHistoryItem[]>(() => getJSON(StorageKeys.history, []));
+
+  useEffect(() => {
+    setJSON(StorageKeys.library, items);
+  }, [items]);
+
+  useEffect(() => {
+    setJSON(StorageKeys.history, history);
+  }, [history]);
 
   const isInLibrary = useCallback(
     (mediaId: string) => items.some(item => item.mediaId === mediaId),
@@ -46,10 +49,10 @@ export function LibraryProvider({
     setHistory(prev => prev.filter(item => item.mediaId !== mediaId));
   }, []);
 
-  const resetMockData = useCallback(() => {
+  const resetLocalData = useCallback(() => {
     setItems([]);
-    setHistory(initialHistory);
-  }, [initialHistory]);
+    setHistory([]);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -59,9 +62,9 @@ export function LibraryProvider({
       removeFromLibrary,
       history,
       removeFromHistory,
-      resetMockData,
+      resetLocalData,
     }),
-    [items, isInLibrary, addToLibrary, removeFromLibrary, history, removeFromHistory, resetMockData],
+    [items, isInLibrary, addToLibrary, removeFromLibrary, history, removeFromHistory, resetLocalData],
   );
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;

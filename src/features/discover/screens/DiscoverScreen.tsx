@@ -1,10 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useDiscover } from '../hooks/useDiscover';
-import { getGenres } from '../../../lib/mock-data/mockApi';
+import { useAddons } from '../../../context/AddonsContext';
+import { genresFor } from '../../../lib/addons/queries';
+import { usePrefetchMeta } from '../../../lib/addons/usePrefetchMeta';
+import { filterByGenres, sortMedia } from '../../../lib/media-sort';
 import { Tabs } from '../../../components/Tabs';
 import { Chip } from '../../../components/Chip';
 import { MediaGrid } from '../../../components/MediaGrid';
@@ -33,11 +36,17 @@ export function DiscoverScreen({ route, navigation }: Props) {
   const [genres, setGenres] = useState<string[]>([]);
   const [sort, setSort] = useState<SortOption>('popularity');
 
-  const allGenres = useMemo(() => getGenres(), []);
+  const { addons, supports } = useAddons();
+  const prefetchMeta = usePrefetchMeta();
+  const allGenres = useMemo(() => genresFor(addons, type), [addons, type]);
   const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useDiscover({ type, genres, sort });
+    useDiscover(type);
 
-  const items: Media[] = data?.pages.flatMap(page => page.items) ?? [];
+  const rawItems: Media[] = useMemo(() => data?.pages.flatMap(page => page.items) ?? [], [data]);
+  const items = useMemo(() => sortMedia(filterByGenres(rawItems, genres), sort), [rawItems, genres, sort]);
+  const failedAddonNames = Array.from(
+    new Set((data?.pages.at(-1)?.failedAddons ?? []).map(a => a.manifest.name)),
+  );
 
   function toggleGenre(genre: string) {
     setGenres(prev => (prev.includes(genre) ? prev.filter(g => g !== genre) : [...prev, genre]));
@@ -49,6 +58,16 @@ export function DiscoverScreen({ route, navigation }: Props) {
     } else {
       navigation.navigate('SeriesDetails', { id: media.id });
     }
+  }
+
+  if (supports('catalog').length === 0) {
+    return (
+      <EmptyState
+        message="No catalog addons installed"
+        actionLabel="Open Addon Manager"
+        onAction={() => navigation.navigate('SettingsAddons')}
+      />
+    );
   }
 
   return (
@@ -72,6 +91,10 @@ export function DiscoverScreen({ route, navigation }: Props) {
         ))}
       </ScrollView>
 
+      {failedAddonNames.length > 0 && (
+        <Text style={styles.partialFailure}>Some sources are unavailable: {failedAddonNames.join(', ')}</Text>
+      )}
+
       {isLoading && <LoadingSkeleton count={6} height={140} />}
       {isError && !isLoading && <ErrorState onRetry={() => refetch()} />}
       {!isLoading && !isError && items.length === 0 && (
@@ -81,10 +104,18 @@ export function DiscoverScreen({ route, navigation }: Props) {
         <MediaGrid
           items={items}
           onPressItem={openMedia}
+          onFocusItem={prefetchMeta}
+          onEndReached={() => {
+            if (hasNextPage && !isFetchingNextPage) {
+              fetchNextPage();
+            }
+          }}
           ListFooterComponent={
-            hasNextPage ? (
+            isFetchingNextPage ? (
+              <LoadingSkeleton count={2} height={80} />
+            ) : hasNextPage ? (
               <View style={styles.footer}>
-                <Button label={isFetchingNextPage ? 'Loading…' : 'Load More'} onPress={() => fetchNextPage()} />
+                <Button label="Load More" onPress={() => fetchNextPage()} />
               </View>
             ) : undefined
           }
@@ -101,6 +132,11 @@ const styles = StyleSheet.create({
   chipRow: {
     paddingLeft: spacing.md,
     marginBottom: spacing.sm,
+  },
+  partialFailure: {
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    fontSize: 12,
   },
   footer: {
     padding: spacing.md,

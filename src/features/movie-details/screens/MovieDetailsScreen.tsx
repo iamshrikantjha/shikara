@@ -1,8 +1,12 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useMovie } from '../hooks/useMovie';
-import { relatedFor } from '../../../lib/mock-data/fixtures';
+import { fetchRelated } from '../../../lib/addons/queries';
+import { usePrefetchMeta } from '../../../lib/addons/usePrefetchMeta';
+import { useAddons } from '../../../context/AddonsContext';
+import { staleTimeFor } from '../../../lib/query-client';
 import { MediaRow } from '../../../components/MediaRow';
 import { Chip } from '../../../components/Chip';
 import { Rating } from '../../../components/Rating';
@@ -21,10 +25,17 @@ export function MovieDetailsScreen({ route, navigation }: Props) {
   const { id } = route.params;
   const { data: movie, isLoading, isError, refetch } = useMovie(id);
   const { isInLibrary, addToLibrary, removeFromLibrary } = useLibrary();
+  const { supports } = useAddons();
+  const prefetchMeta = usePrefetchMeta();
   const { resolvedTheme } = useTheme();
   const t = themeTokens[resolvedTheme];
 
-  const related = useMemo(() => (movie ? relatedFor(movie.id, movie.genres) : []), [movie]);
+  const { data: related = [] } = useQuery({
+    queryKey: ['related', 'movie', id],
+    queryFn: () => fetchRelated(supports('catalog'), 'movie', id, movie?.genres ?? []),
+    enabled: Boolean(movie),
+    staleTime: staleTimeFor.catalog,
+  });
 
   function openMedia(media: Media) {
     if (media.type === 'movie') {
@@ -97,7 +108,7 @@ export function MovieDetailsScreen({ route, navigation }: Props) {
         )}
       </View>
 
-      <MediaRow title="More Like This" items={related} onPressItem={openMedia} />
+      <MediaRow title="More Like This" items={related} onPressItem={openMedia} onFocusItem={prefetchMeta} />
     </ScrollView>
   );
 }
