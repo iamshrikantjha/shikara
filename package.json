@@ -7,7 +7,11 @@
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "reset": "adb uninstall com.mobile",
+    "clean": "cd android && ./gradlew clean && cd ..",
+    "build": "cd android && ./gradlew build && cd ..",
+    "generate": "cd android && ./gradlew generateCodegenArtifactsFromSchema && cd ..",
   },
   "dependencies": {
     "react": "19.2.3",
