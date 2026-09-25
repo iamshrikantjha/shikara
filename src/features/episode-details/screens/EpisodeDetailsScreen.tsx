@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSeason } from '../../season/hooks/useSeason';
+import { RemoteImage } from '../../../components/RemoteImage';
 import { Rating } from '../../../components/Rating';
 import { Button } from '../../../components/Button';
 import { LoadingSkeleton } from '../../../components/LoadingSkeleton';
@@ -35,7 +36,7 @@ export function EpisodeDetailsScreen({ route, navigation }: Props) {
 
       {episode && (
         <View style={styles.body}>
-          <View style={[styles.thumbnail, { backgroundColor: t.skeleton, borderColor: t.border }]} />
+          <RemoteImage uri={episode.thumbnailUrl} style={[styles.thumbnail, { borderColor: t.border }]} priority="high" />
           <Text style={styles.label}>{label}</Text>
           <Text style={styles.title}>{episode.title}</Text>
           <View style={styles.metaRow}>

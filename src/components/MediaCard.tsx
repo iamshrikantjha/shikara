@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { Media } from '../lib/types';
 import { Focusable } from './Focusable';
+import { RemoteImage } from './RemoteImage';
 import { useTheme } from '../context/ThemeContext';
 import { spacing, themeTokens } from '../styles/tokens';
 
@@ -19,9 +20,9 @@ export function MediaCard({ media, onPress, onLongPress, onFocus, width = 120 }:
 
   return (
     <Focusable onPress={onPress} onLongPress={onLongPress} onFocus={onFocus} style={{ width }}>
-      <View style={[styles.poster, { borderColor: t.border, backgroundColor: t.skeleton }]}>
+      <RemoteImage uri={media.posterUrl} style={[styles.poster, { borderColor: t.border }]}>
         <Text style={styles.typeBadge}>{media.type === 'movie' ? 'Movie' : 'Series'}</Text>
-      </View>
+      </RemoteImage>
       <Text numberOfLines={2} style={styles.title}>
         {media.title}
       </Text>

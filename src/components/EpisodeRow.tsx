@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { Episode } from '../lib/types';
 import { Focusable } from './Focusable';
+import { RemoteImage } from './RemoteImage';
 import { Rating } from './Rating';
 import { useTheme } from '../context/ThemeContext';
 import { spacing, themeTokens } from '../styles/tokens';
@@ -20,7 +21,7 @@ export function EpisodeRow({ episode, onPress }: EpisodeRowProps) {
 
   return (
     <Focusable onPress={onPress} style={[styles.row, { borderColor: t.border }]}>
-      <View style={[styles.thumbnail, { borderColor: t.border, backgroundColor: t.skeleton }]} />
+      <RemoteImage uri={episode.thumbnailUrl} style={[styles.thumbnail, { borderColor: t.border }]} />
       <View style={styles.info}>
         <Text style={styles.label}>{label}</Text>
         <Text numberOfLines={1} style={styles.title}>

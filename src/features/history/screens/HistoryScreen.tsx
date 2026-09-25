@@ -3,6 +3,7 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from '../../../components/Button';
 import { EmptyState } from '../../../components/EmptyState';
+import { RemoteImage } from '../../../components/RemoteImage';
 import { useLibrary } from '../../../context/LibraryContext';
 import type { RootStackParamList } from '../../../navigation/routes';
 import { spacing, themeTokens } from '../../../styles/tokens';
@@ -28,7 +29,7 @@ export function HistoryScreen({ navigation }: Props) {
         const percent = Math.round((item.progressSeconds / item.durationSeconds) * 100);
         return (
           <View style={[styles.row, { borderColor: t.border }]}>
-            <View style={[styles.thumbnail, { backgroundColor: t.skeleton, borderColor: t.border }]} />
+            <RemoteImage uri={item.posterUrl} style={[styles.thumbnail, { borderColor: t.border }]} />
             <View style={styles.info}>
               <Text style={styles.title}>{item.title}</Text>
               {item.episodeLabel && <Text>{item.episodeLabel}</Text>}

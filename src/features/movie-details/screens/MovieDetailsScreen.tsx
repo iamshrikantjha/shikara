@@ -8,6 +8,7 @@ import { usePrefetchMeta } from '../../../lib/addons/usePrefetchMeta';
 import { useAddons } from '../../../context/AddonsContext';
 import { staleTimeFor } from '../../../lib/query-client';
 import { MediaRow } from '../../../components/MediaRow';
+import { RemoteImage } from '../../../components/RemoteImage';
 import { Chip } from '../../../components/Chip';
 import { Rating } from '../../../components/Rating';
 import { Button } from '../../../components/Button';
@@ -57,9 +58,9 @@ export function MovieDetailsScreen({ route, navigation }: Props) {
 
   return (
     <ScrollView>
-      <View style={[styles.backdrop, { backgroundColor: t.skeleton, borderColor: t.border }]} />
+      <RemoteImage uri={movie.backdropUrl} style={[styles.backdrop, { borderColor: t.border }]} priority="high" />
       <View style={styles.body}>
-        <View style={[styles.poster, { backgroundColor: t.skeleton, borderColor: t.border }]} />
+        <RemoteImage uri={movie.posterUrl} style={[styles.poster, { borderColor: t.border }]} priority="high" />
 
         <Text style={styles.title}>{movie.title}</Text>
         <View style={styles.metaRow}>

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSeries } from '../hooks/useSeries';
+import { RemoteImage } from '../../../components/RemoteImage';
 import { Chip } from '../../../components/Chip';
 import { Rating } from '../../../components/Rating';
 import { Button } from '../../../components/Button';
@@ -42,9 +43,9 @@ export function SeriesDetailsScreen({ route, navigation }: Props) {
 
   return (
     <ScrollView>
-      <View style={[styles.backdrop, { backgroundColor: t.skeleton, borderColor: t.border }]} />
+      <RemoteImage uri={series.backdropUrl} style={[styles.backdrop, { borderColor: t.border }]} priority="high" />
       <View style={styles.body}>
-        <View style={[styles.poster, { backgroundColor: t.skeleton, borderColor: t.border }]} />
+        <RemoteImage uri={series.posterUrl} style={[styles.poster, { borderColor: t.border }]} priority="high" />
 
         <Text style={styles.title}>{series.title}</Text>
         <View style={styles.metaRow}>
