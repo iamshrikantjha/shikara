@@ -8,16 +8,23 @@
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest",
-    "reset": "adb uninstall com.mobile",
+    "reset": "adb uninstall com.shikara",
     "clean": "cd android && ./gradlew clean && cd ..",
     "build": "cd android && ./gradlew build && cd ..",
     "generate": "cd android && ./gradlew generateCodegenArtifactsFromSchema && cd ..",
+    "doctor": "npx react-native doctor"
   },
   "dependencies": {
+    "@react-native/new-app-screen": "0.87.1",
+    "@react-navigation/bottom-tabs": "^7.19.2",
+    "@react-navigation/native": "^7.4.1",
+    "@react-navigation/native-stack": "^7.19.2",
+    "@tanstack/react-query": "^5.103.2",
     "react": "19.2.3",
     "react-native": "0.87.1",
-    "@react-native/new-app-screen": "0.87.1",
-    "react-native-safe-area-context": "^5.5.2"
+    "react-native-gesture-handler": "^3.3.0",
+    "react-native-safe-area-context": "^5.10.0",
+    "react-native-screens": "^4.28.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
