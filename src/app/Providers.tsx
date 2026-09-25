@@ -7,6 +7,7 @@ import { queryClient } from '../lib/query-client';
 import { queryPersister } from '../lib/query-persister';
 import { ThemeProvider } from '../context/ThemeContext';
 import { LibraryProvider } from '../context/LibraryContext';
+import { SettingsProvider } from '../context/SettingsContext';
 import { AddonsProvider } from '../context/AddonsContext';
 
 const persistOptions = {
@@ -21,7 +22,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
           <ThemeProvider>
             <LibraryProvider>
-              <AddonsProvider>{children}</AddonsProvider>
+              <SettingsProvider>
+                <AddonsProvider>{children}</AddonsProvider>
+              </SettingsProvider>
             </LibraryProvider>
           </ThemeProvider>
         </PersistQueryClientProvider>

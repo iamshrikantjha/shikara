@@ -4,7 +4,7 @@ import { fetchMergedMeta } from '../../../lib/addons/queries';
 import { metaQueryKey, staleTimeFor } from '../../../lib/query-client';
 import type { Movie } from '../../../lib/types';
 
-export function useMovie(id: string) {
+export function useMovie(id: string, options?: { enabled?: boolean }) {
   const { addons, supports } = useAddons();
   const metaAddons = supports('meta');
 
@@ -12,6 +12,6 @@ export function useMovie(id: string) {
     queryKey: metaQueryKey('movie', id),
     queryFn: () => fetchMergedMeta(addons, 'movie', id) as Promise<Movie | null>,
     staleTime: staleTimeFor.meta,
-    enabled: metaAddons.length > 0,
+    enabled: metaAddons.length > 0 && (options?.enabled ?? true),
   });
 }

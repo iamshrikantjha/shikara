@@ -8,6 +8,8 @@ import { MovieDetailsScreen } from '../features/movie-details/screens/MovieDetai
 import { SeriesDetailsScreen } from '../features/series-details/screens/SeriesDetailsScreen';
 import { SeasonScreen } from '../features/season/screens/SeasonScreen';
 import { EpisodeDetailsScreen } from '../features/episode-details/screens/EpisodeDetailsScreen';
+import { MovieStreamsScreen } from '../features/streams/screens/MovieStreamsScreen';
+import { EpisodeStreamsScreen } from '../features/streams/screens/EpisodeStreamsScreen';
 import { PlayerScreen } from '../features/player/screens/PlayerScreen';
 import { HistoryScreen } from '../features/history/screens/HistoryScreen';
 import { AddonManagerScreen } from '../features/addons/screens/AddonManagerScreen';
@@ -29,6 +31,8 @@ export function RootNavigator() {
           component={EpisodeDetailsScreen}
           options={{ presentation: 'modal', title: '' }}
         />
+        <Stack.Screen name="MovieStreams" component={MovieStreamsScreen} options={{ title: 'Streams' }} />
+        <Stack.Screen name="EpisodeStreams" component={EpisodeStreamsScreen} options={{ title: 'Streams' }} />
         <Stack.Screen name="Player" component={PlayerScreen} options={{ headerShown: false }} />
         <Stack.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />
         <Stack.Screen name="SettingsAddons" component={AddonManagerScreen} options={{ title: 'Addons' }} />

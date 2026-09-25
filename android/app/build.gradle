@@ -107,6 +107,14 @@ android {
     }
 }
 
+// docs/03-Phase3-Torrent-Streaming.md §5 — native torrent engine (Kotlin + libtorrent4j).
+// Pinned to 2.1.0-27: it's the newest release with published Android native
+// artifacts (later 2.1.0-3x releases only shipped the desktop/base jar) — the
+// base jar's SWIG-generated JNI bindings must exactly match the native .so's
+// ABI, so every libtorrent4j artifact below MUST stay on this same version.
+def libtorrent4jVersion = "2.1.0-27"
+def media3Version = "1.11.1"
+
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
@@ -116,4 +124,16 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    implementation "org.libtorrent4j:libtorrent4j:${libtorrent4jVersion}"
+    implementation "org.libtorrent4j:libtorrent4j-android-arm:${libtorrent4jVersion}"
+    implementation "org.libtorrent4j:libtorrent4j-android-arm64:${libtorrent4jVersion}"
+    implementation "org.libtorrent4j:libtorrent4j-android-x86:${libtorrent4jVersion}"
+    implementation "org.libtorrent4j:libtorrent4j-android-x86_64:${libtorrent4jVersion}"
+
+    // docs/03-Phase3-Torrent-Streaming.md §5.3 — native player (ExoPlayer).
+    implementation "androidx.media3:media3-exoplayer:${media3Version}"
+    implementation "androidx.media3:media3-ui:${media3Version}"
+    implementation "androidx.media3:media3-common:${media3Version}"
+    implementation "androidx.media3:media3-datasource:${media3Version}"
 }

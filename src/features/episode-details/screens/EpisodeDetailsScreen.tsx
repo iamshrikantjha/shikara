@@ -47,7 +47,11 @@ export function EpisodeDetailsScreen({ route, navigation }: Props) {
           </View>
           <Text style={styles.overview}>{episode.overview}</Text>
           <View style={styles.actionRow}>
-            <Button label="Play" disabled variant="secondary" />
+            <Button
+              label="Play"
+              variant="secondary"
+              onPress={() => navigation.navigate('EpisodeStreams', { id, season: seasonNumber, episode: episodeNumber })}
+            />
             <Button label={watched ? 'Watched ✓' : 'Mark as Watched'} onPress={() => setWatched(w => !w)} />
           </View>
         </View>

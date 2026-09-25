@@ -22,4 +22,5 @@ export const StorageKeys = {
   addons: 'shikara.addons',
   library: 'shikara.library',
   history: 'shikara.history',
+  settings: 'shikara.settings',
 } as const;

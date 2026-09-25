@@ -68,6 +68,8 @@ export interface LibraryItem {
   mediaId: string;
   type: MediaType;
   addedAt: string;
+  // For quick "resume with same source" / autoplay (docs/03-Phase3-Torrent-Streaming.md §8, §3.3).
+  lastStream?: { source: string; quality: string };
 }
 
 export interface WatchHistoryItem {

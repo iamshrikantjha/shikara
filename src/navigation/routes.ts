@@ -16,7 +16,9 @@ export type RootStackParamList = {
   SeriesDetails: { id: string; season?: number };
   Season: { id: string; season: number };
   EpisodeDetails: { id: string; season: number; episode: number };
-  Player: { mediaId: string; type?: 'movie' | 'series' };
+  MovieStreams: { id: string };
+  EpisodeStreams: { id: string; season: number; episode: number };
+  Player: { mediaId: string; type?: 'movie' | 'series'; streamId?: string };
   History: undefined;
   SettingsAddons: undefined;
   SettingsAbout: undefined;

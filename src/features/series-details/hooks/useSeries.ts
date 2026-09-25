@@ -4,7 +4,7 @@ import { fetchMergedMeta } from '../../../lib/addons/queries';
 import { metaQueryKey, staleTimeFor } from '../../../lib/query-client';
 import type { Series } from '../../../lib/types';
 
-export function useSeries(id: string) {
+export function useSeries(id: string, options?: { enabled?: boolean }) {
   const { addons, supports } = useAddons();
   const metaAddons = supports('meta');
 
@@ -12,6 +12,6 @@ export function useSeries(id: string) {
     queryKey: metaQueryKey('series', id),
     queryFn: () => fetchMergedMeta(addons, 'series', id) as Promise<Series | null>,
     staleTime: staleTimeFor.meta,
-    enabled: metaAddons.length > 0,
+    enabled: metaAddons.length > 0 && (options?.enabled ?? true),
   });
 }

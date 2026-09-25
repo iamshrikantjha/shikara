@@ -81,7 +81,11 @@ export function MovieDetailsScreen({ route, navigation }: Props) {
             label={inLibrary ? 'Remove from Library' : 'Add to Library'}
             onPress={() => (inLibrary ? removeFromLibrary(movie.id) : addToLibrary(movie.id, 'movie'))}
           />
-          <Button label="Find Streams" disabled variant="secondary" />
+          <Button
+            label="Find Streams"
+            variant="secondary"
+            onPress={() => navigation.navigate('MovieStreams', { id: movie.id })}
+          />
         </View>
 
         <Text style={styles.overview}>{movie.overview}</Text>

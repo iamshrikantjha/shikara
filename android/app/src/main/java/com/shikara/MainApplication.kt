@@ -6,6 +6,8 @@ import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.shikara.torrent.TorrentPackage
+import com.shikara.player.PlayerPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -14,8 +16,11 @@ class MainApplication : Application(), ReactApplication {
       context = applicationContext,
       packageList =
         PackageList(this).packages.apply {
-          // Packages that cannot be autolinked yet can be added manually here, for example:
-          // add(MyReactNativePackage())
+          // docs/03-Phase3-Torrent-Streaming.md §5 — native torrent module,
+          // not autolinked since it isn't a standalone npm package.
+          add(TorrentPackage())
+          // docs/03-Phase3-Torrent-Streaming.md §5.3 — native player module + view.
+          add(PlayerPackage())
         },
     )
   }

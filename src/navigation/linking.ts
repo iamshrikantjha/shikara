@@ -20,6 +20,8 @@ export const linking: LinkingOptions<RootStackParamList> = {
       SeriesDetails: 'series/:id',
       Season: 'series/:id/season/:season',
       EpisodeDetails: 'series/:id/season/:season/episode/:episode',
+      MovieStreams: 'movie/:id/streams',
+      EpisodeStreams: 'series/:id/season/:season/episode/:episode/streams',
       Player: 'player/:mediaId',
       History: 'history',
       SettingsAddons: 'settings/addons',
