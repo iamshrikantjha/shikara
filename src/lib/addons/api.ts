@@ -1,5 +1,5 @@
 import type { InstalledAddon, MediaType } from '../types';
-import type { RawMetaItem } from './normalize';
+import type { RawMetaItem, RawStreamItem, RawSubtitleItem } from './normalize';
 
 export class AddonRequestError extends Error {}
 
@@ -54,4 +54,19 @@ export async function fetchMeta(addon: InstalledAddon, type: MediaType, id: stri
   const url = `${addonBaseUrl(addon)}/meta/${type}/${encodeURIComponent(id)}.json`;
   const data = await getJson<{ meta?: RawMetaItem }>(url);
   return data.meta ?? null;
+}
+
+// GET {addonBaseURL}/stream/{type}/{id}.json (docs/03-Phase3-Torrent-Streaming.md §4.1.2)
+// {id} is `{imdbId}` for a movie or `{imdbId}:{season}:{episode}` for an episode.
+export async function fetchStream(addon: InstalledAddon, type: MediaType, id: string): Promise<RawStreamItem[]> {
+  const url = `${addonBaseUrl(addon)}/stream/${type}/${encodeURIComponent(id)}.json`;
+  const data = await getJson<{ streams?: RawStreamItem[] }>(url);
+  return data.streams ?? [];
+}
+
+// GET {addonBaseURL}/subtitles/{type}/{id}.json (docs/03-Phase3-Torrent-Streaming.md §4.2.2)
+export async function fetchSubtitles(addon: InstalledAddon, type: MediaType, id: string): Promise<RawSubtitleItem[]> {
+  const url = `${addonBaseUrl(addon)}/subtitles/${type}/${encodeURIComponent(id)}.json`;
+  const data = await getJson<{ subtitles?: RawSubtitleItem[] }>(url);
+  return data.subtitles ?? [];
 }

@@ -28,6 +28,8 @@ jest.mock('../src/lib/addons/api', () => ({
   AddonRequestError: class AddonRequestError extends Error {},
   fetchCatalog: jest.fn().mockResolvedValue([]),
   fetchMeta: jest.fn().mockResolvedValue(null),
+  fetchStream: jest.fn().mockResolvedValue([]),
+  fetchSubtitles: jest.fn().mockResolvedValue([]),
 }));
 
 import App from '../App';

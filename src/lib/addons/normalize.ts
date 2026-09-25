@@ -1,4 +1,4 @@
-import type { CastMember, Episode, Media, MediaType, Movie, Season, Series } from '../types';
+import type { CastMember, Episode, Media, MediaType, Movie, Season, Series, Stream, StreamQuality, SubtitleTrack } from '../types';
 
 // Raw Stremio catalog/meta response shapes — only the fields this app reads.
 // Screens never see these; every field crosses through normalize* first
@@ -135,4 +135,115 @@ export function normalizeMeta(raw: RawMetaItem, type: MediaType): Media {
     cast: castMembers(raw.cast),
     seasons,
   } satisfies Series;
+}
+
+// Raw Stremio stream/subtitles response shapes (docs/03-Phase3-Torrent-Streaming.md §4.1.3/§4.2.3).
+export interface RawSubtitleItem {
+  id?: string;
+  lang: string;
+  url: string;
+}
+
+export interface RawStreamBehaviorHints {
+  fileIdx?: number;
+  filename?: string;
+  videoSize?: number;
+}
+
+export interface RawStreamItem {
+  name?: string; // Stremio convention: short line, often addon name + quality
+  title?: string; // Stremio convention: long line, often filename + size/seeders
+  description?: string;
+  url?: string; // direct link
+  infoHash?: string; // torrent infohash — present instead of `url` for torrent streams
+  fileIdx?: number;
+  behaviorHints?: RawStreamBehaviorHints;
+  subtitles?: RawSubtitleItem[];
+}
+
+const QUALITY_PATTERNS: [RegExp, StreamQuality][] = [
+  [/\b(2160p|4k|uhd)\b/i, '2160p'],
+  [/\b1080p\b/i, '1080p'],
+  [/\b720p\b/i, '720p'],
+  [/\b480p\b/i, '480p'],
+];
+
+function parseQuality(text: string): StreamQuality | undefined {
+  for (const [pattern, quality] of QUALITY_PATTERNS) {
+    if (pattern.test(text)) return quality;
+  }
+  return /\bsd\b/i.test(text) ? 'sd' : undefined;
+}
+
+function parseCodec(text: string): string | undefined {
+  if (/\b(x265|h\.?265|hevc)\b/i.test(text)) return 'H.265';
+  if (/\b(x264|h\.?264|avc)\b/i.test(text)) return 'H.264';
+  if (/\bav1\b/i.test(text)) return 'AV1';
+  return undefined;
+}
+
+function parseResolution(text: string): string | undefined {
+  return text.match(/\b\d{3,4}x\d{3,4}\b/)?.[0];
+}
+
+// Torrentio-family addons (Torrentio, Comet, MediaFusion) encode size/seeders/peers
+// as emoji-prefixed tokens inside the free-text `title`/`name` — the Stremio stream
+// protocol has no structured field for any of the three, so this is the only signal
+// available generically, without special-casing any one addon's exact format.
+function parseSizeBytes(text: string): number | undefined {
+  const match = text.match(/([\d.]+)\s?(GB|MB)\b/i);
+  if (!match) return undefined;
+  const value = parseFloat(match[1]);
+  return match[2].toUpperCase() === 'GB' ? value * 1024 * 1024 * 1024 : value * 1024 * 1024;
+}
+
+function parseSeeders(text: string): number | undefined {
+  const match = text.match(/👤\s?(\d+)/) ?? text.match(/seeders?[:\s]+(\d+)/i);
+  return match ? Number(match[1]) : undefined;
+}
+
+function parsePeers(text: string): number | undefined {
+  const match = text.match(/🌐\s?(\d+)/) ?? text.match(/peers?[:\s]+(\d+)/i);
+  return match ? Number(match[1]) : undefined;
+}
+
+function parseAudioTracks(text: string): string[] {
+  return ['Atmos', '7.1', '5.1', '2.0'].filter(token => text.includes(token));
+}
+
+// Normalizes one raw addon stream entry into the app-wide `Stream` shape
+// (docs/03 §4.1.3). `addonName` comes from the installed addon, not the raw
+// item — the raw protocol has no per-stream addon identity field.
+export function normalizeStream(raw: RawStreamItem, addonName: string): Stream {
+  const text = `${raw.name ?? ''} ${raw.title ?? ''} ${raw.description ?? ''}`;
+  const fileIdx = raw.fileIdx ?? raw.behaviorHints?.fileIdx;
+  const identity = raw.infoHash ?? raw.url ?? raw.title ?? raw.name ?? 'unknown';
+
+  return {
+    id: [addonName, identity, fileIdx].filter(v => v !== undefined).join(':'),
+    title: raw.title ?? raw.name ?? addonName,
+    url: raw.url ?? (raw.infoHash ? `magnet:?xt=urn:btih:${raw.infoHash}` : ''),
+    type: raw.infoHash ? 'torrent' : 'direct',
+    quality: parseQuality(text),
+    resolution: parseResolution(text),
+    codec: parseCodec(text),
+    audioTracks: parseAudioTracks(text),
+    subtitles: (raw.subtitles ?? []).map(s => normalizeSubtitle(s, addonName)),
+    size: parseSizeBytes(text) ?? raw.behaviorHints?.videoSize,
+    source: addonName,
+    behaviorHints: {
+      seeders: parseSeeders(text),
+      peers: parsePeers(text),
+      fileIdx,
+    },
+  };
+}
+
+export function normalizeSubtitle(raw: RawSubtitleItem, addonName: string): SubtitleTrack {
+  return {
+    id: raw.id ?? `${addonName}:${raw.lang}:${raw.url}`,
+    lang: raw.lang,
+    url: raw.url,
+    source: addonName,
+  };
 }

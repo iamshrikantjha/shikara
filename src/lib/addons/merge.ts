@@ -1,4 +1,4 @@
-import type { InstalledAddon, Media } from '../types';
+import type { InstalledAddon, Media, Stream, SubtitleTrack } from '../types';
 
 export interface SettledAddonResults<T> {
   results: { addon: InstalledAddon; value: T }[];
@@ -41,6 +41,33 @@ export function mergeMediaLists(resultsInPriorityOrder: Media[][]): Media[] {
     }
   }
   return Array.from(seen.values());
+}
+
+// Streams are NOT merged like catalog/meta: multiple sources returning the
+// same title is the entire point of the Streams screen, so results are only
+// concatenated, never collapsed by id (docs/03-Phase3-Torrent-Streaming.md
+// §4.1.3 — deliberately not reusing mergeMediaLists above).
+export function combineStreamResults(resultsInPriorityOrder: Stream[][]): Stream[] {
+  return resultsInPriorityOrder.flat();
+}
+
+// Subtitle tracks dedupe only on exact duplicates (same addon + language +
+// url) — distinct releases/syncs in the same language must both stay
+// selectable (docs/03 §3.2), unlike stream results this still has one
+// collapsing pass since a genuine duplicate provides no extra choice.
+export function mergeSubtitleTracks(tracksInPriorityOrder: SubtitleTrack[][]): SubtitleTrack[] {
+  const seen = new Set<string>();
+  const result: SubtitleTrack[] = [];
+  for (const list of tracksInPriorityOrder) {
+    for (const track of list) {
+      const key = `${track.source}:${track.lang}:${track.url}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(track);
+      }
+    }
+  }
+  return result;
 }
 
 export function unionGenres(genreLists: (string[] | undefined)[]): string[] {

@@ -120,7 +120,33 @@ export interface SubtitleTrack {
   source: string;
 }
 
+export type StreamType = 'torrent' | 'direct';
+export type StreamQuality = '2160p' | '1080p' | '720p' | '480p' | 'sd';
+
+export interface StreamBehaviorHints {
+  seeders?: number;
+  peers?: number;
+  fileIdx?: number; // which file within the torrent, for season-pack magnets (docs/03 §5.2)
+}
+
+// Normalized shape for the `stream` capability (docs/03-Phase3-Torrent-Streaming.md §4.1.3).
+export interface Stream {
+  id: string;
+  title: string;
+  url: string; // magnet URI (torrent) or direct link, as returned by the addon
+  type: StreamType;
+  quality?: StreamQuality;
+  resolution?: string;
+  codec?: string;
+  audioTracks: string[];
+  subtitles: SubtitleTrack[]; // embedded in the stream itself — merged with dedicated subtitle addons at the Player level
+  size?: number; // bytes
+  source: string; // addon name, shown on the Streams screen
+  behaviorHints: StreamBehaviorHints;
+}
+
 export type SortOption = 'popularity' | 'newest' | 'rating' | 'az';
+export type StreamSortOption = 'bestMatch' | 'quality' | 'size' | 'seeders';
 
 // Route by manifest, never by addon identity — docs/02-Phase2-API-Integration.md §2.3.
 export function supportsCapability(
