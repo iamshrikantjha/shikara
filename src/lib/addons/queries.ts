@@ -63,8 +63,9 @@ export interface MergedStreamResult {
 // Streams screen fans out to every stream-capable addon in parallel and
 // concatenates results — multiple sources for the same title is the point,
 // unlike catalog/meta's id-collapsing merge (docs/03-Phase3-Torrent-Streaming.md §4.1.3).
+// Also filters by type so movie-only addons aren't queried for series and vice versa.
 export async function fetchMergedStreams(addons: InstalledAddon[], type: MediaType, id: string): Promise<MergedStreamResult> {
-  const capable = addonsSupporting(addons, 'stream');
+  const capable = addonsSupporting(addons, 'stream', type);
   const { results, failedAddons } = await settleAcrossAddons(capable, async addon => {
     const raw = await fetchStream(addon, type, id);
     return raw.map(item => normalizeStream(item, addon.manifest.name));
@@ -84,7 +85,7 @@ export async function fetchMergedSubtitles(
   type: MediaType,
   id: string,
 ): Promise<MergedSubtitleResult> {
-  const capable = addonsSupporting(addons, 'subtitles');
+  const capable = addonsSupporting(addons, 'subtitles', type);
   const { results, failedAddons } = await settleAcrossAddons(capable, async addon => {
     const raw = await fetchSubtitles(addon, type, id);
     return raw.map(item => normalizeSubtitle(item, addon.manifest.name));

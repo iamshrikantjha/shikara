@@ -4,8 +4,20 @@ import { supportsCapability } from '../types';
 // The one place every hook asks "which installed addons can answer this?" —
 // never by addon name/id, only by declared capability
 // (docs/02-Phase2-API-Integration.md §2.3).
-export function addonsSupporting(addons: InstalledAddon[], capability: AddonCapability): InstalledAddon[] {
-  return addons.filter(a => supportsCapability(a, capability));
+//
+// The optional `mediaType` parameter further filters to addons that declare the
+// given type in manifest.types — prevents movie-only addons from being queried
+// for series streams and vice versa, cutting unnecessary network requests.
+export function addonsSupporting(
+  addons: InstalledAddon[],
+  capability: AddonCapability,
+  mediaType?: MediaType,
+): InstalledAddon[] {
+  return addons.filter(a => {
+    if (!supportsCapability(a, capability)) return false;
+    if (mediaType && a.manifest.types.length > 0 && !a.manifest.types.includes(mediaType)) return false;
+    return true;
+  });
 }
 
 // An addon's own declared catalog for a given type — never assume every addon

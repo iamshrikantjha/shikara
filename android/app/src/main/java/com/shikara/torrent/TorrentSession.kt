@@ -116,6 +116,19 @@ object TorrentSession {
         val torrentId = infoHashFromMagnet(uri)
             ?: throw IllegalArgumentException("Not a valid magnet URI (missing btih)")
         val s = ensureStarted()
+
+        // Guard: if the torrent is already registered (e.g. user re-opens the
+        // Player for the same source), skip re-downloading. Resume the existing
+        // handle so it continues where it left off rather than restarting or
+        // producing a second ADD_TORRENT alert with a potentially-invalid handle.
+        if (handles.containsKey(torrentId)) {
+            handles[torrentId]?.resume()
+            Log.i(TAG, "Torrent already registered, resuming: $torrentId")
+            return torrentId
+        }
+
+        Log.i(TAG, "download() called, torrentId=$torrentId saveDir=${saveDir.absolutePath} isDhtRunning=${s.isDhtRunning} isRunning=${s.isRunning}")
+
         // SEQUENTIAL_DOWNLOAD biases toward download order rather than
         // rarest-first, which combines with the explicit piece-deadline
         // read-ahead window (applyReadAheadWindow) to make the file playable
@@ -405,7 +418,11 @@ object TorrentSession {
                 AlertType.DHT_BOOTSTRAP -> {
                     Log.i(TAG, "DHT bootstrapped successfully")
                 }
-                else -> Unit
+                // Catch-all so a genuinely unrecognized-but-relevant alert is
+                // never silently invisible again — this is exactly the gap that
+                // let real failures (session never starting, no alerts firing
+                // at all) look identical to "still buffering" for hours.
+                else -> Log.v(TAG, "alert: ${alert.type()} — ${alert.message()}")
             }
         }
     }

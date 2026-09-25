@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Episode } from '../lib/types';
 import { Focusable } from './Focusable';
 import { RemoteImage } from './RemoteImage';
@@ -10,9 +10,13 @@ import { spacing, themeTokens } from '../styles/tokens';
 interface EpisodeRowProps {
   episode: Episode;
   onPress: () => void;
+  // When provided, the ▶ icon is a dedicated play button that goes straight
+  // to streams — tapping anywhere else on the row still calls onPress
+  // (episode details). Omit on platforms where streaming isn't available.
+  onPlayPress?: () => void;
 }
 
-export function EpisodeRow({ episode, onPress }: EpisodeRowProps) {
+export function EpisodeRow({ episode, onPress, onPlayPress }: EpisodeRowProps) {
   const { resolvedTheme } = useTheme();
   const t = themeTokens[resolvedTheme];
   const label = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(
@@ -37,7 +41,13 @@ export function EpisodeRow({ episode, onPress }: EpisodeRowProps) {
           <Rating value={episode.rating} />
         </View>
       </View>
-      <Text style={styles.playIcon}>▶</Text>
+      {onPlayPress ? (
+        <Pressable onPress={onPlayPress} style={styles.playButton} hitSlop={12}>
+          <Text style={styles.playIcon}>▶</Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.playIcon}>▶</Text>
+      )}
     </Focusable>
   );
 }
@@ -72,6 +82,9 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: 'row',
     marginTop: spacing.xs,
+  },
+  playButton: {
+    padding: spacing.sm,
   },
   playIcon: {
     paddingHorizontal: spacing.sm,

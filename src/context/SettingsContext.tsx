@@ -36,7 +36,7 @@ const DEFAULT_SETTINGS: StoredSettings = {
   },
   torrent: {
     maxPeers: 50,
-    downloadMode: 'wifiOnly',
+    downloadMode: 'wifiAndMobile',
     maxCacheSizeGB: 5,
   },
 };

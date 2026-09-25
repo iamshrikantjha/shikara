@@ -1,5 +1,6 @@
 package com.shikara.torrent
 
+import android.util.Log
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -22,6 +23,10 @@ import java.io.File
  */
 class TorrentModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
+    companion object {
+        private const val TAG = "ShikaraTorrent"
+    }
+
     override fun getName(): String = "TorrentModule"
 
     // Streaming buffer cache lives under the app's own cache dir — this is
@@ -35,6 +40,10 @@ class TorrentModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
         try {
             promise.resolve(TorrentSession.addMagnet(uri, saveDir))
         } catch (e: Exception) {
+            // Was previously silent in logcat (only the promise rejection carried
+            // the message) — every failed addMagnet() must be visible here, since
+            // a JS-side catch swallowing this looks identical to a network stall.
+            Log.e(TAG, "addMagnet failed for $uri", e)
             promise.reject("ADD_MAGNET_FAILED", e.message, e)
         }
     }

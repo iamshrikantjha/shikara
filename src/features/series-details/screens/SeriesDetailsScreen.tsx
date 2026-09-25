@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSeries } from '../hooks/useSeries';
 import { RemoteImage } from '../../../components/RemoteImage';
@@ -66,7 +66,24 @@ export function SeriesDetailsScreen({ route, navigation }: Props) {
             label={inLibrary ? 'Remove from Library' : 'Add to Library'}
             onPress={() => (inLibrary ? removeFromLibrary(series.id) : addToLibrary(series.id, 'series'))}
           />
-          <Button label="Find Streams" disabled variant="secondary" />
+          <Button
+            label="Find Streams"
+            variant="secondary"
+            // Navigates to EpisodeStreams for the first episode of the selected season.
+            // Android-only in Phase 3 — no native player on iOS/Web yet
+            // (docs/03-Phase3-Torrent-Streaming.md §7).
+            disabled={Platform.OS !== 'android' || !currentSeason?.episodes.length}
+            onPress={() => {
+              const ep = currentSeason?.episodes[0];
+              if (ep) {
+                navigation.navigate('EpisodeStreams', {
+                  id: series.id,
+                  season: ep.seasonNumber,
+                  episode: ep.episodeNumber,
+                });
+              }
+            }}
+          />
         </View>
 
         <Text style={styles.overview}>{series.overview}</Text>
@@ -98,12 +115,25 @@ export function SeriesDetailsScreen({ route, navigation }: Props) {
             <EpisodeRow
               key={episode.id}
               episode={episode}
+              // Tap the row → episode details (overview, air date, mark-watched).
+              // The ▶ icon inside EpisodeRow makes it clear tapping = details;
+              // "Find Streams" at the top is the quick-play path.
               onPress={() =>
                 navigation.navigate('EpisodeDetails', {
                   id: series.id,
                   season: episode.seasonNumber,
                   episode: episode.episodeNumber,
                 })
+              }
+              onPlayPress={
+                Platform.OS === 'android'
+                  ? () =>
+                      navigation.navigate('EpisodeStreams', {
+                        id: series.id,
+                        season: episode.seasonNumber,
+                        episode: episode.episodeNumber,
+                      })
+                  : undefined
               }
             />
           ))

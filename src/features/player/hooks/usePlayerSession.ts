@@ -126,14 +126,19 @@ export function usePlayerSession(stream: Stream | undefined, options: UsePlayerS
           const resolvedFileIndex = await pollForFileIndex(id, () => cancelled);
           if (cancelled) return;
           if (resolvedFileIndex === null) {
-            setError('metadata');
+            // Don't clobber an error the 60s no-peers timer already set —
+            // pollForFileIndex's own 90s deadline keeps running independently
+            // (this effect isn't cancelled just because `error` changed), so
+            // without this guard the more specific "No peers found" message
+            // silently flips to the generic "could not be resolved" 30s later.
+            setError(prev => prev ?? 'metadata');
             return;
           }
           PlayerModule.load(id, resolvedFileIndex, options.subtitleUrl ?? null, options.subtitleLang ?? null);
         }
         setLastStream(options.libraryMediaId, stream!.source, stream!.quality ?? 'sd');
       } catch {
-        setError('metadata');
+        setError(prev => prev ?? 'metadata');
       }
     }
 
@@ -213,7 +218,7 @@ export function usePlayerSession(stream: Stream | undefined, options: UsePlayerS
       const status = torrentStatusRef.current;
       const player = playerStateRef.current;
       if ((status?.progress ?? 0) === 0 && (status?.peers ?? 0) === 0 && !player?.isPlaying) {
-        setError('noPeers');
+        setError(prev => prev ?? 'noPeers');
       }
     }, NO_PEERS_TIMEOUT_MS);
     return () => clearTimeout(timeout);
