@@ -1,6 +1,6 @@
 # Implementation Guide — Phase 3: Torrent Streaming End-to-End
 
-**Version:** 2.0 (revised: no backend, no auth — stream addons queried directly by the client, exactly like Phase 2's catalog addons)
+**Version:** 2.1 (revised: reconciled against the actual Phase 1/2 codebase — route params, `WatchHistoryItem` shape, stream-specific merge, and settings placeholders now reference what really exists; resolved season-pack file selection, health-indicator unknown state, torrent background lifecycle, autoplay stream selection, switch-source resume, and iOS/Web button behavior)
 **Status:** Planned — starts after Phase 2 metadata integration is complete
 **Depends on:** `02-Phase2-API-Integration.md` (needs real `imdbId`/canonical media identity to look up streams, and reuses the same Addon Manager built there), `PRD.md` §18–25 (Addon/Stream/Player/Torrent architecture)
 
@@ -59,9 +59,16 @@ The JS layer never touches BitTorrent directly — it only calls a stable native
 
 ## 3. New / changed screens
 
-### 3.1 Streams screen (new) — `/movie/:id/streams` and `/series/:id/season/:s/episode/:e/streams`
+### 3.1 Streams screen (new) — `/movie/:id/streams` and `/series/:id/season/:season/episode/:episode/streams`
 
 **Purpose:** List every available stream source for the selected media/episode, mirroring Stremio's stream-picker.
+
+Adds two new entries to `RootStackParamList` (`src/navigation/routes.ts`), following the existing naming/param convention (`MovieDetails`, `EpisodeDetails` — param keys spelled out as `season`/`episode`, not abbreviated):
+
+```ts
+MovieStreams: { id: string };
+EpisodeStreams: { id: string; season: number; episode: number };
+```
 
 **Entry point:** "Find Streams" button on Movie Details / Episode Details (now enabled).
 
@@ -72,10 +79,12 @@ The JS layer never touches BitTorrent directly — it only calls a stable native
   * Quality badge (`4K`, `1080p`, `720p`, `480p`, `SD`)
   * Codec badge (`H.264` / `H.265` / `AV1`) where known
   * File size (e.g. `2.1 GB`)
-  * Health indicator (seeders/peers count → colored dot: green = healthy, yellow = moderate, red = poor)
+  * Health indicator (seeders/peers count → colored dot: green = healthy ≥10 seeders, yellow = moderate 1–9, red = poor 0, **gray = unknown** when the addon didn't report a seeder/peer count at all — never default missing data to red)
   * Audio info (e.g. `5.1`, language) where known
   * Subtitle availability indicator where known
 * Sort control: `Best Match` (default) | `Quality (High→Low)` | `Size (Small→Large)` | `Seeders`
+  * `Best Match` ranking, in order: (1) quality tier matching Settings → Playback "Preferred quality" ranks first if set to anything other than `Auto`, (2) quality tier high→low, (3) seeders desc (unknown treated as lowest), (4) size desc as a final tiebreak.
+* Duplicate results: no cross-addon dedup by infohash/magnet — if two installed addons surface the same torrent, both rows render as-is (each still shows its own `source` addon name), since that's the only signal distinguishing them from the user's perspective.
 * Tap a row → navigates to Player screen with the selected stream and begins buffering immediately
 
 **States:**
@@ -87,6 +96,14 @@ The JS layer never touches BitTorrent directly — it only calls a stable native
 ---
 
 ### 3.2 Player screen (`/player/:mediaId`) — now fully functional, replacing the Phase 1 stub
+
+The existing `Player` route param (`{ mediaId: string; type?: 'movie' | 'series' }`, `src/navigation/routes.ts`) has no slot for which stream was selected — extend it so the Streams screen can hand off its selection:
+
+```ts
+Player: { mediaId: string; type?: 'movie' | 'series'; streamId: string };
+```
+
+`streamId` is looked up against the same Streams-screen query result already cached by TanStack Query (Section 4.3) rather than serializing the whole `Stream` object through navigation params.
 
 **Layout — full screen, controls auto-hide after ~3s of inactivity, tap/focus to reveal:**
 
@@ -104,28 +121,31 @@ The JS layer never touches BitTorrent directly — it only calls a stable native
   * Download speed (e.g. `4.2 MB/s`)
   * Peers connected count
   * Percent buffered
-  * "Switch Source" button → returns to Streams screen
+  * "Switch Source" button → returns to Streams screen. Selecting a new source resumes playback from the same `WatchHistoryItem.progressSeconds` this media/episode already had (read before starting the new torrent's buffering), never restarts at 0 — the failure was the source's fault, not the user's progress.
 * **Subtitle/Audio track picker** (bottom sheet, opened from top bar icon):
-  * Subtitle: `Off` + a **merged** list of tracks from two sources — any embedded directly in the selected `Stream` object (`stream.subtitles[]`) **and** any returned by every enabled `subtitles`-capable addon for this media id (Section 4.2) — deduplicated by language, ordered by Addon Manager priority when two sources offer the same language. This is the same multi-addon merge pattern used for the Streams screen itself (Section 3.1), applied to a second capability.
+  * Subtitle: `Off` + a **merged** list of tracks from two sources — any embedded directly in the selected `Stream` object (`stream.subtitles[]`) **and** any returned by every enabled `subtitles`-capable addon for this media id (Section 4.2). Dedupe only *exact* duplicates (same addon + same language + same url); otherwise keep every track and show all of them per language, using each track's `source` addon name as the visible label so the user can pick between differently-synced releases — do not collapse to one track per language. Order: Addon Manager priority, then by language.
   * Audio: list of available audio tracks by language/channel layout (where the source provides multiple)
 * **Error overlay** (playback failure — bad source, network loss, unsupported codec): message + "Switch Source" button + "Back" button
 
-**TV-specific controls:** D-pad left/right = seek ±10s when controls are visible, up = reveal controls, down = hide, center/select = play/pause, back = exit player (with confirmation only if less than ~95% watched, else exits directly).
+**TV-specific controls:** D-pad left/right = seek ±10s when controls are visible, up = reveal controls, down = hide, center/select = play/pause, back = exit player (with confirmation only if less than ~95% watched, else exits directly). Watch-position writes (Section 8) continue on their normal 5–10s cadence regardless of how the session ends — an aborted/backed-out session persists its last-written position exactly like a completed one; there is no separate "abandoned session" case.
+
+**Torrent session lifecycle (backgrounding):** Leaving the Player screen (back button or the app backgrounding) **pauses** the active torrent via `pause(torrentId)` rather than stopping/removing it — no further piece downloads or upload/seed traffic while backgrounded, but the session and its already-downloaded pieces are kept so returning to the same Player resumes instantly via `resume(torrentId)` rather than re-buffering from scratch. Only one torrent session is kept paused-and-resumable at a time: starting a new stream (a different title, or "Switch Source" on the same title) calls `stop(torrentId)`/`remove(torrentId)` on whatever was previously paused before starting the new one. An app kill (not just backgrounding) does not need to preserve the paused session — the next launch starts clean.
 
 ---
 
 ### 3.3 Settings — new sections activated
 
-These existed as disabled placeholders since Phase 1 (`01-Phase1-UI-Navigation.md` §3.11) — now made functional:
+Only "Default subtitle language" and "Autoplay next episode" existed as disabled placeholder rows since Phase 1 (`01-Phase1-UI-Navigation.md` §3.11) — those two are now made functional. "Default audio language," "Preferred quality," and the entire **Torrent** section are net-new UI and state (no placeholder row, no backing context, exists for them yet) — build a `useSettings()`-style context/store for this section the same way `ThemeContext`/`LibraryContext` back the other settings, rather than assuming existing inert controls just need wiring:
 
 * **Playback**
   * Default subtitle language (functional picker)
-  * Default audio language (functional picker)
-  * Autoplay next episode (functional toggle) — on playback end, auto-navigates to next episode's Streams/Player flow
-  * Preferred quality (`Auto`, `1080p`, `720p`, `480p`) — used to auto-rank the Streams list's default sort
-* **Torrent**
+  * Default audio language (functional picker, net-new)
+  * Autoplay next episode (functional toggle) — on playback end, attempts to auto-resume the same addon+quality as `lastStream` for the next episode; if that addon returns no result (or errors) for the new episode, falls back to the normal Streams screen for a manual pick rather than silently substituting a different addon
+  * Preferred quality (`Auto`, `1080p`, `720p`, `480p`, net-new) — used to auto-rank the Streams list's default sort (Section 3.1's "Best Match" formula)
+* **Torrent** (entirely new section, no Phase 1/2 placeholder)
   * Max connected peers (functional stepper, default 50)
-  * Download on: `Wi-Fi only` | `Wi-Fi + Mobile Data` (mobile data warns with a confirmation dialog before starting a stream)
+  * Download on: `Wi-Fi only` | `Wi-Fi + Mobile Data` (mobile data warns with a confirmation dialog before starting a stream; if the network hands over from Wi-Fi to mobile data mid-download while this is set to `Wi-Fi only`, the active torrent pauses and re-shows the same confirmation dialog rather than silently continuing on mobile data)
+  * Max streaming cache size (functional stepper/picker, default 5GB) — when exceeded, oldest completed/paused torrents' downloaded data is evicted first (LRU), independent of the manual clear button below
   * Storage location for streaming buffer cache
   * "Clear streaming cache" button
 
@@ -136,6 +156,8 @@ These existed as disabled placeholders since Phase 1 (`01-Phase1-UI-Navigation.m
 This phase adds two more addon capabilities — `stream` and `subtitles` — to the exact same Addon Manager and `supports()` capability-detection helper built in Phase 2 (`02-Phase2-API-Integration.md` §2.3, §4). There is no separate system, no separate manager screen, and no backend. Both are installed the same way a catalog addon is: paste a manifest URL into `/settings/addons`, and the manager detects what it supports from `manifest.resources` — never from the addon's name.
 
 The app ships with **no** stream or subtitle addon pre-installed (unlike Cinemeta in Phase 2) — the user installs one themselves via the Addon Manager, exactly as in real Stremio.
+
+**Pre-existing cross-phase note:** the Addon Manager's install-dedup check (`AddonsContext.installAddon`) currently compares raw `manifestUrl` strings, not `manifest.id` — so the same addon reachable via two different URL forms (trailing slash, http vs https, or a regenerated Comet/MediaFusion config URL with identical settings) can be installed twice, producing duplicate rows in the Streams screen with no existing guard against it. Not introduced by this phase, but worth fixing (dedupe by `manifest.id` instead) alongside the Phase 3 work since this is the first phase where the duplication becomes user-visible.
 
 ### 4.1 Stream capability
 
@@ -149,6 +171,8 @@ Comet         — torrent/debrid stream addon, same protocol
 MediaFusion   — torrent/debrid stream addon; also declares `catalog`, a good test that
                 one addon can expose more than one capability at once
 ```
+
+Comet and MediaFusion are typically installed via a **personalized** manifest URL: the user configures a debrid provider (Real-Debrid, etc.) on the addon's own web page, which generates a manifest URL with that config (including debrid API keys) encoded directly in the URL path. The Addon Manager doesn't need any special handling for this — it's still just "paste a manifest URL" — but note that `installAddon` persists `manifestUrl` verbatim in local storage (`src/lib/storage.ts`), so those credentials end up stored as plain URL text on-device. Accepted as-is for this device-only, no-cloud-sync app; no additional secret-handling is required.
 
 #### 4.1.2 Request endpoint (Stremio stream protocol)
 
@@ -178,10 +202,12 @@ Stream
 ├── subtitles[]     // embedded subtitle refs, if the addon provides any — merged with 4.2's dedicated subtitle addons at the Player level
 ├── size
 ├── source         // addon name, shown on the Streams screen (e.g. "Torrentio", "Comet")
-├── behaviorHints   // { seeders?, peers? } used for the health indicator
+├── behaviorHints   // { seeders?, peers?, fileIdx? } used for the health indicator and file selection (§5.2)
 ```
 
-The Streams screen queries every enabled addon with the `stream` capability in parallel, merges + normalizes results, and renders them — it has no addon-specific logic, satisfying `PRD.md` §51's dependency-direction rule (React components never talk to a provider's raw format directly).
+`behaviorHints.seeders`/`peers` are optional and frequently absent — the Streams screen's health indicator (§3.1) must render its "unknown" (gray) state rather than assuming a number, and the "Best Match" sort must not treat a missing count as zero seeders' worth of ranking penalty beyond "unknown sorts last."
+
+The Streams screen queries every enabled addon with the `stream` capability in parallel, then **concatenates and sorts** the results — it does **not** run them through Phase 2's `mergeMediaLists` (`src/lib/addons/merge.ts`), which dedupes by canonical `Media.id` and is correct only for catalog/meta results where the same title from two addons should collapse to one entry. A stream list's entire purpose is showing multiple sources for the same title, so a distinct stream-list combinator (concatenate all addons' results, then apply the Section 3.1 sort — no id-based collapsing) is needed instead; only `settleAcrossAddons`'s per-addon failure isolation is reused as-is. This still has no addon-specific logic, satisfying `PRD.md` §51's dependency-direction rule (React components never talk to a provider's raw format directly).
 
 ### 4.2 Subtitle capability
 
@@ -199,6 +225,8 @@ GET {addonBaseURL}/subtitles/{type}/{id}.json
 ```
 
 Same `{type}`/`{id}` convention as Section 4.1.2. Called directly by the client, no auth.
+
+**Known limitation (deferred, not a Phase 3 requirement):** real OpenSubtitles-style addons often accept `videoHash`/`videoSize` as `extra` params on this request for frame-accurate sync to the specific rip being played. Phase 3 calls the bare `{type}/{id}.json` endpoint only — subtitles may be mistimed for some releases. This is an accepted, documented limitation, not a bug to fix in this phase; revisit only if it blocks the Definition of Done in practice.
 
 #### 4.2.3 Normalized `SubtitleTrack` object
 
@@ -269,7 +297,7 @@ setFilePriority(torrentId, fileIndex, priority)
 
 ### 5.2 Streaming-specific behavior
 
-* On `addMagnet`, once metadata resolves, identify the largest video file in the torrent as the file to prioritize.
+* On `addMagnet`, once metadata resolves, select the file to prioritize as follows: if the selected `Stream.behaviorHints.fileIdx` is present (common for season-pack magnets, where the addon already knows which file within the torrent is the requested episode), use that file index directly; otherwise fall back to identifying the largest video file in the torrent. Never assume "largest file" alone is correct — a season-pack magnet's largest file is not necessarily the requested episode.
 * Piece prioritization must front-load pieces near the current playback position (sequential-ish download with a "read-ahead window"), not a flat sequential download of the whole file — this is what makes it playable before 100% complete.
 * Expose piece-level progress to JS so the Player's seek bar can render the real buffered range (Section 3.2).
 * Player seeking into an unbuffered region must trigger re-prioritization around the new position and show the buffering overlay.
@@ -309,26 +337,39 @@ Native Adapter
 | Network drops mid-playback | Pause + buffering overlay, auto-resume when connectivity returns |
 | Stream or subtitle addon times out during lookup | That addon's results simply don't appear; others still render (Section 3.1 / §4.2's partial failure isolation) |
 | Mobile data + "Wi-Fi only" setting | Confirmation dialog before starting stream, not a silent block |
+| Network hands over Wi-Fi → mobile data mid-download, with "Wi-Fi only" set | Pause the active torrent, re-show the same confirmation dialog — never continue silently on mobile data |
+| Player screen exited (back / app backgrounded) with an active torrent | `pause(torrentId)`, not `stop`/`remove` — resumes instantly via `resume(torrentId)` if the user returns before starting a different stream (§3.2) |
+| "Find Streams" / "Play" tapped on iOS or Web | Buttons remain disabled, identical to Phase 1/2 — no native torrent/player path exists on these platforms in Phase 3 |
 
 ---
 
 ## 8. Data model additions
 
-Extends the Phase 2 domain model (`02-Phase2-API-Integration.md` §4):
+Extends the **actual existing types** in `src/lib/types.ts` (not a new parallel shape) — `LibraryItem` and `WatchHistoryItem` already exist and are already consumed by `LibraryContext`/`HistoryScreen`:
 
-```text
-LibraryItem (extended)
-├── ...existing fields
-├── lastStream: { source, quality }   // for quick "resume with same source"
+```ts
+// LibraryItem — add one field
+interface LibraryItem {
+  // ...existing fields (mediaId, type, addedAt)
+  lastStream?: { source: string; quality: string };   // for quick "resume with same source" / autoplay (§3.3)
+}
 
-WatchHistory
-├── mediaId
-├── position         // seconds
-├── duration          // seconds
-├── updatedAt
+// WatchHistoryItem already has progressSeconds/durationSeconds, not position/duration —
+// no rename needed, Phase 3 just starts writing real values into the existing fields:
+interface WatchHistoryItem {
+  mediaId: string;
+  type: MediaType;
+  episodeId?: string;
+  title: string;
+  posterUrl?: string;
+  episodeLabel?: string;
+  progressSeconds: number;   // written periodically during playback
+  durationSeconds: number;
+  updatedAt: string;
+}
 ```
 
-Watch position is written periodically during playback (e.g. every 5–10s) so History (`01-Phase1-UI-Navigation.md` §3.9) and Home's "Continue Watching" row become real instead of mock.
+Watch position is written periodically during playback (e.g. every 5–10s) so History (`01-Phase1-UI-Navigation.md` §3.9) and Home's "Continue Watching" row become real instead of mock — this write continues on the same cadence regardless of how the session ends (completed, backed out of, or aborted by an error), per §3.2.
 
 ---
 
@@ -344,10 +385,13 @@ Watch position is written periodically during playback (e.g. every 5–10s) so H
 * [ ] Play/pause/seek/stop/quality/audio-track/subtitle-track all function through the native player; the subtitle picker shows the merged list per §3.2.
 * [ ] Buffering overlay shows real download speed/peers/percent.
 * [ ] One stream or subtitle addon failing does not break its screen or crash the app (isolation verified).
-* [ ] Settings → Playback and Torrent sections are fully functional (no longer disabled placeholders).
-* [ ] Watch position is persisted and populates History/Continue Watching with real data.
+* [ ] Settings → Playback's two Phase 1 placeholders (subtitle language, autoplay) are functional; Playback's two net-new controls (audio language, preferred quality) and the entire net-new Torrent section (including max cache size) are built and functional (§3.3).
+* [ ] Watch position is persisted into the existing `WatchHistoryItem.progressSeconds`/`durationSeconds` fields (not a new shape) and populates History/Continue Watching with real data — verified for completed, backed-out-of, and error-aborted sessions alike.
 * [ ] Stream/subtitle TanStack caching (Section 4.3) is implemented and verified — query keys match Phase 2 §7.1's convention exactly.
-* [ ] All error scenarios in Section 7 have been manually tested (kill network mid-stream, pick a dead/no-peer source, etc.).
+* [ ] All error scenarios in Section 7 have been manually tested (kill network mid-stream, pick a dead/no-peer source, Wi-Fi→mobile handover, backgrounding/resuming the Player, etc.).
+* [ ] A season-pack magnet (one torrent, multiple episode files) plays the correct episode when the addon supplies `behaviorHints.fileIdx` (§5.2) — not just the largest file in the torrent.
+* [ ] "Find Streams"/"Play" remain disabled on iOS and Web, unchanged from Phase 1/2 (§7).
+* [ ] `__tests__/App.test.tsx`'s manual mock of `src/lib/addons/api` is updated with `fetchStream`/`fetchSubtitles` alongside the new real exports, so the existing app-render test doesn't break.
 * [ ] No BitTorrent protocol logic exists in JavaScript — confirmed the JS layer only calls the native module interface.
 * [ ] Confirmed: no backend service and no authentication were introduced anywhere in this phase — the app still only calls addon URLs directly from the client.
 
