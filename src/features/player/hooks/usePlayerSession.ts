@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Alert } from 'react-native';
-import { TorrentModule, TorrentPriority } from '../../../lib/native/TorrentModule';
+import { TorrentModule, TorrentPriority, type TorrentState } from '../../../lib/native/TorrentModule';
 import { PlayerModule, type PlayerStateInfo } from '../../../lib/native/PlayerModule';
 import { useLibrary } from '../../../context/LibraryContext';
 import type { DownloadMode } from '../../../context/SettingsContext';
@@ -11,8 +11,11 @@ import type { MediaType, Stream } from '../../../lib/types';
 const STATUS_POLL_MS = 1000;
 const PLAYER_POLL_MS = 500;
 const HISTORY_WRITE_MS = 5000;
-const METADATA_TIMEOUT_MS = 30_000;
-const NO_PEERS_TIMEOUT_MS = 20_000;
+// Cold DHT bootstrap (no prior routing table — the very first magnet this
+// session has ever resolved) can genuinely take 60-90s even on a healthy
+// network; 30s was cutting this off before it had a real chance to work.
+const METADATA_TIMEOUT_MS = 90_000;
+const NO_PEERS_TIMEOUT_MS = 60_000;
 
 export type PlayerErrorKind = 'metadata' | 'noPeers' | 'playback' | 'declined';
 
@@ -20,6 +23,7 @@ export interface TorrentStatusInfo {
   downloadSpeed: number;
   peers: number;
   progress: number;
+  state: TorrentState;
 }
 
 interface UsePlayerSessionOptions {
@@ -140,12 +144,24 @@ export function usePlayerSession(stream: Stream | undefined, options: UsePlayerS
     };
   }, [stream, options.libraryMediaId, options.subtitleUrl, options.subtitleLang, options.downloadMode, setLastStream]);
 
-  // Buffering overlay data (docs §3.2) — download speed/peers/percent.
+  const torrentStatusRef = useRef(torrentStatus);
+  torrentStatusRef.current = torrentStatus;
+  const playerStateRef = useRef(playerState);
+  playerStateRef.current = playerState;
+
+  // Buffering overlay data (docs §3.2) — download speed/peers/percent/state.
   useEffect(() => {
     if (!torrentId) return;
     const interval = setInterval(() => {
       TorrentModule.getStatus(torrentId)
-        .then(status => setTorrentStatus({ downloadSpeed: status.downloadSpeed, peers: status.peers, progress: status.progress }))
+        .then(status =>
+          setTorrentStatus({
+            downloadSpeed: status.downloadSpeed,
+            peers: status.peers,
+            progress: status.progress,
+            state: status.state,
+          }),
+        )
         .catch(() => undefined);
     }, STATUS_POLL_MS);
     return () => clearInterval(interval);
@@ -189,16 +205,19 @@ export function usePlayerSession(stream: Stream | undefined, options: UsePlayerS
   }, [playerState, options.mediaId, options.type, options.title, options.episodeLabel, upsertHistory]);
 
   // "No peers found after timeout" (docs §7) — only relevant for torrent
-  // streams that never start downloading anything.
+  // streams that never start downloading anything. Uses refs so periodic polling
+  // doesn't reset the timer on every tick.
   useEffect(() => {
     if (!torrentId) return;
     const timeout = setTimeout(() => {
-      if ((torrentStatus?.progress ?? 0) === 0 && (torrentStatus?.peers ?? 0) === 0 && !playerState?.isPlaying) {
+      const status = torrentStatusRef.current;
+      const player = playerStateRef.current;
+      if ((status?.progress ?? 0) === 0 && (status?.peers ?? 0) === 0 && !player?.isPlaying) {
         setError('noPeers');
       }
     }, NO_PEERS_TIMEOUT_MS);
     return () => clearTimeout(timeout);
-  }, [torrentId, torrentStatus, playerState]);
+  }, [torrentId]);
 
   // ExoPlayer-reported playback failure (bad source, unsupported codec, etc.)
   // surfaces as the Error overlay too (docs §7) — driven by the native

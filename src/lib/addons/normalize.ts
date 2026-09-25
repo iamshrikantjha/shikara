@@ -157,8 +157,50 @@ export interface RawStreamItem {
   url?: string; // direct link
   infoHash?: string; // torrent infohash — present instead of `url` for torrent streams
   fileIdx?: number;
+  sources?: string[];
   behaviorHints?: RawStreamBehaviorHints;
   subtitles?: RawSubtitleItem[];
+}
+
+export const DEFAULT_TRACKERS: readonly string[] = [
+  'udp://tracker.opentrackr.org:1337/announce',
+  'udp://open.stealth.si:80/announce',
+  'udp://open.demonii.com:1337/announce',
+  'udp://tracker.torrent.eu.org:451/announce',
+  'udp://explodie.org:6969/announce',
+  'udp://tracker.dler.org:6969/announce',
+  'udp://tracker.qu.ax:6969/announce',
+  'udp://tracker.nyaa.vc:6969/announce',
+  'http://tracker.opentrackr.org:1337/announce',
+];
+
+export function buildMagnetUri(infoHash: string, title?: string, sources?: string[]): string {
+  const trackers = new Set<string>();
+  if (Array.isArray(sources)) {
+    for (const src of sources) {
+      if (typeof src === 'string' && src.startsWith('tracker:')) {
+        trackers.add(src.slice('tracker:'.length).trim());
+      } else if (typeof src === 'string' && (src.startsWith('udp://') || src.startsWith('http://') || src.startsWith('https://'))) {
+        trackers.add(src.trim());
+      }
+    }
+  }
+  for (const fallback of DEFAULT_TRACKERS) {
+    trackers.add(fallback);
+  }
+
+  const dn = title ? `&dn=${encodeURIComponent(title)}` : '';
+  const trList = Array.from(trackers)
+    .map(tr => `&tr=${encodeURIComponent(tr)}`)
+    .join('');
+  return `magnet:?xt=urn:btih:${infoHash.toLowerCase()}${dn}${trList}`;
+}
+
+function enrichMagnetUri(url: string, title?: string, sources?: string[]): string {
+  if (!url.startsWith('magnet:?')) return url;
+  const match = url.match(/urn:btih:([a-zA-Z0-9]+)/i);
+  if (!match) return url;
+  return buildMagnetUri(match[1], title, sources);
 }
 
 const QUALITY_PATTERNS: [RegExp, StreamQuality][] = [
@@ -219,11 +261,20 @@ export function normalizeStream(raw: RawStreamItem, addonName: string): Stream {
   const fileIdx = raw.fileIdx ?? raw.behaviorHints?.fileIdx;
   const identity = raw.infoHash ?? raw.url ?? raw.title ?? raw.name ?? 'unknown';
 
+  let url = raw.url ?? '';
+  if (raw.infoHash) {
+    url = buildMagnetUri(raw.infoHash, raw.title ?? raw.name, raw.sources);
+  } else if (url.startsWith('magnet:?')) {
+    url = enrichMagnetUri(url, raw.title ?? raw.name, raw.sources);
+  }
+
+  const isTorrent = Boolean(raw.infoHash || url.startsWith('magnet:?'));
+
   return {
     id: [addonName, identity, fileIdx].filter(v => v !== undefined).join(':'),
     title: raw.title ?? raw.name ?? addonName,
-    url: raw.url ?? (raw.infoHash ? `magnet:?xt=urn:btih:${raw.infoHash}` : ''),
-    type: raw.infoHash ? 'torrent' : 'direct',
+    url,
+    type: isTorrent ? 'torrent' : 'direct',
     quality: parseQuality(text),
     resolution: parseResolution(text),
     codec: parseCodec(text),

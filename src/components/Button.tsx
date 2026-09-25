@@ -9,9 +9,13 @@ interface ButtonProps {
   onPress?: () => void;
   disabled?: boolean;
   variant?: 'primary' | 'secondary';
+  // Overrides the label color — needed on screens with a non-default
+  // background (e.g. the Player's permanently-black overlay), where the
+  // platform's default Text color is otherwise invisible.
+  textColor?: string;
 }
 
-export function Button({ label, onPress, disabled, variant = 'primary' }: ButtonProps) {
+export function Button({ label, onPress, disabled, variant = 'primary', textColor }: ButtonProps) {
   const { resolvedTheme } = useTheme();
   const t = themeTokens[resolvedTheme];
   return (
@@ -24,7 +28,7 @@ export function Button({ label, onPress, disabled, variant = 'primary' }: Button
         variant === 'secondary' && styles.secondary,
       ]}
     >
-      <Text>{label}</Text>
+      <Text style={textColor ? { color: textColor } : undefined}>{label}</Text>
     </Pressable>
   );
 }

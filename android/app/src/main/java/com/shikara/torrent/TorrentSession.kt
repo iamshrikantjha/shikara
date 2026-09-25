@@ -1,11 +1,14 @@
 package com.shikara.torrent
 
+import android.util.Log
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
 import org.libtorrent4j.AlertListener
 import org.libtorrent4j.Priority
 import org.libtorrent4j.SessionManager
+import org.libtorrent4j.SessionParams
+import org.libtorrent4j.SettingsPack
 import org.libtorrent4j.TorrentFlags
 import org.libtorrent4j.TorrentHandle
 import org.libtorrent4j.TorrentInfo
@@ -29,6 +32,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object TorrentSession {
 
+    private const val TAG = "ShikaraTorrent"
+
     // How many pieces past the current playback position get a near-term
     // deadline — the "read-ahead window" (docs §5.2), not a flat sequential
     // download of the whole file.
@@ -50,10 +55,25 @@ object TorrentSession {
     private fun ensureStarted(): SessionManager {
         var s = session
         if (s == null) {
+            val sp = SettingsPack()
+            sp.setEnableDht(true)
+            sp.setEnableLsd(true)
+            sp.setDhtBootstrapNodes("router.bittorrent.com:6881,dht.transmissionbt.com:6881,router.utorrent.com:6881,dht.libtorrent.org:25401,dht.aelitis.com:6881")
+            sp.listenInterfaces("0.0.0.0:6881,[::]:6881,0.0.0.0:0,[::]:0")
+            sp.connectionsLimit(200)
+            sp.activeDownloads(10)
+            sp.maxPeerlistSize(1000)
+            sp.stopTrackerTimeout(1)
+
+            val params = SessionParams(sp)
             s = SessionManager()
             s.addListener(SessionAlertListener())
-            s.start()
+            s.start(params)
+            if (!s.isDhtRunning) {
+                s.startDht()
+            }
             session = s
+            Log.i(TAG, "Torrent session started with DHT and dynamic port binding")
         }
         return s
     }
@@ -312,6 +332,12 @@ object TorrentSession {
         val startPiece = (firstPiece + (byteOffset / pieceLength)).toInt().coerceIn(firstPiece, lastPiece)
 
         handle.clearPieceDeadlines()
+
+        // Critical for fast streaming start: prioritize container header pieces immediately
+        // (piece 0 for EBML/MKV header, last piece for MP4 moov atom)
+        handle.setPieceDeadline(firstPiece, 0)
+        handle.setPieceDeadline(lastPiece, 0)
+
         var deadline = 0
         var piece = startPiece
         var count = 0
@@ -334,28 +360,50 @@ object TorrentSession {
     }
 
     private class SessionAlertListener : AlertListener {
-        // null = listen to every alert type; ADD_TORRENT/METADATA_RECEIVED
-        // are the only ones this session acts on (docs §5.2). Progress/peers
-        // are polled from JS via getStatus()/getPeers(), not pushed as
-        // events, matching §5.1's promise-based API.
         override fun types(): IntArray? = null
 
         override fun alert(alert: Alert<*>) {
             when (alert.type()) {
                 AlertType.ADD_TORRENT -> {
-                    val handle = (alert as AddTorrentAlert).handle()
-                    if (handle.isValid) {
-                        handles[handle.infoHash().toHex().lowercase()] = handle
-                        // Matches libtorrent4j's own demo pattern (DownloadTorrent.java):
-                        // a freshly added torrent needs an explicit resume() to begin
-                        // fetching metadata/pieces at all. JS's start()/resume() calls
-                        // are then idempotent no-ops on top of this.
+                    val addAlert = alert as AddTorrentAlert
+                    val handle = addAlert.handle()
+                    val hash = handle?.infoHash()?.toHex()?.lowercase() ?: "unknown"
+                    if (handle != null && handle.isValid) {
+                        handles[hash] = handle
                         handle.resume()
                         applyFileSelection(handle)
+                        Log.i(TAG, "Torrent added: $hash")
+                    } else {
+                        Log.e(TAG, "AddTorrentAlert invalid or error: ${addAlert.message()}")
                     }
                 }
                 AlertType.METADATA_RECEIVED -> {
-                    applyFileSelection((alert as MetadataReceivedAlert).handle())
+                    val metaAlert = alert as MetadataReceivedAlert
+                    val handle = metaAlert.handle()
+                    val hash = handle?.infoHash()?.toHex()?.lowercase() ?: "unknown"
+                    Log.i(TAG, "Metadata received for torrent: $hash")
+                    applyFileSelection(handle)
+                }
+                AlertType.METADATA_FAILED -> {
+                    Log.w(TAG, "Metadata failed: ${alert.what()} - ${alert.message()}")
+                }
+                AlertType.TORRENT_ERROR -> {
+                    Log.e(TAG, "Torrent error: ${alert.what()} - ${alert.message()}")
+                }
+                AlertType.LISTEN_SUCCEEDED -> {
+                    Log.i(TAG, "Listen succeeded: ${alert.message()}")
+                }
+                AlertType.LISTEN_FAILED -> {
+                    Log.w(TAG, "Listen failed: ${alert.message()}")
+                }
+                AlertType.TRACKER_REPLY -> {
+                    Log.i(TAG, "Tracker reply: ${alert.message()}")
+                }
+                AlertType.TRACKER_ERROR -> {
+                    Log.w(TAG, "Tracker error: ${alert.message()}")
+                }
+                AlertType.DHT_BOOTSTRAP -> {
+                    Log.i(TAG, "DHT bootstrapped successfully")
                 }
                 else -> Unit
             }

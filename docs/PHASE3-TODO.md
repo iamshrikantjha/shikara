@@ -104,8 +104,37 @@ Seed list (from `cheatsheet.txt`): Torrentio, Netflix-catalog-addon, Comet, TheP
 
 ---
 
+## 8. First real-device bug (found via actual testing) ✅ fixed
+User ran the app on a real Genymotion emulator and hit an immediate crash on `PlayerModule.stop()`: `IllegalStateException: Player is accessed on the wrong thread. Current thread: 'mqt_v_native'. Expected thread: 'main'`.
+
+- **Root cause:** RN's `@ReactMethod`s execute on a background bridge thread by default. ExoPlayer requires every call (including simple getters like `currentPosition`) to happen on the same thread that created the player — which is the main/UI thread, since `PlayerViewManager.createViewInstance` (a view-manager lifecycle method) always runs there. Every `PlayerBridge` call from `PlayerModule` was hitting the player from the wrong thread.
+- **Fix:** every `PlayerModule.kt` method now wraps its `PlayerBridge` call in `UiThreadUtil.runOnUiThread { ... }`, including `getState()` (the promise now resolves from inside the posted runnable).
+- **Verified:** `./gradlew :app:compileDebugKotlin` → `BUILD SUCCESSFUL` after the fix. Not yet re-confirmed on-device (waiting on the next test run) — this is exactly the class of bug the "not runtime-tested" caveats on items 4–7 were flagging.
+- This is the first real signal from actual device testing — expect more of this kind as testing continues; `TorrentModule`/`TorrentSession` don't touch ExoPlayer so aren't affected by this specific issue, but haven't been device-tested either.
+
+---
+
+## 9. Second real-device bug: 0 peers & "This torrent could not be resolved" ✅ fixed
+User ran the app on Genymotion; selecting a torrent source buffered for 30s with 0 peers and failed with "This torrent could not be resolved."
+
+- **Root causes:**
+  1. **Naked magnet links (zero trackers):** `normalizeStream` in `src/lib/addons/normalize.ts` was discarding the `sources` array from addon responses (e.g. Torrentio). Without trackers (`&tr=...`), peer discovery was 100% reliant on DHT.
+  2. **Cold DHT bootstrap on emulator:** On an Android emulator/device under NAT, a cold DHT routing table without known bootstrap peers took minutes or failed entirely.
+  3. **Silent error suppression:** `TorrentSession.kt` had no fallback bootstrap nodes and dropped all non-metadata alerts in `SessionAlertListener`.
+  4. **Latent `FileNotFoundException` in `TorrentDataSource`:** In `libtorrent4j`, sparse files are only created on disk once a piece is written. `TorrentDataSource.open()` opened `RandomAccessFile(path, "r")` before awaiting piece 0, which would fail immediately upon metadata resolution.
+  5. **Invisible Button text:** `Button.tsx` had no text color override, rendering invisible labels against the player's black background.
+- **Fixes:**
+  1. `src/lib/addons/normalize.ts`: Added `sources?: string[]` to `RawStreamItem`, extracted tracker URLs from `sources`, appended a robust list of fallback tier-1 public trackers (`DEFAULT_TRACKERS`), and enriched magnet URIs with display names (`&dn=`) and tracker queries (`&tr=`).
+  2. `TorrentSession.kt`: Configured `SessionParams` with `listenInterfaces("0.0.0.0:6881,[::]:6881,0.0.0.0:0,[::]:0")`, enabled DHT/LSD, added standard DHT bootstrap nodes, prioritized both container header pieces (first piece for EBML, last piece for MP4 `moov` atom) with deadline 0, and added logging for alerts.
+  3. `TorrentDataSource.kt`: Guaranteed initial piece availability in `open()` before calling `RandomAccessFile(path, "r")` with filesystem sync retry.
+  4. `usePlayerSession.ts` & `PlayerScreen.tsx`: Mapped `status.state` to the buffering UI (`Resolving stream metadata…`, `Checking files…`, `Buffering stream…`), fixed `NO_PEERS_TIMEOUT_MS` timer reset bug via status refs, and added `textColor="#fff"` to player buttons.
+- **Verified:** `./gradlew :app:compileDebugKotlin` and `npm test` pass cleanly.
+
+---
+
 ## Remaining before Phase 3 can be called fully done
 - Actual device/emulator testing (nothing in items 4–6 has run outside compilation)
 - TV D-pad seek (`TVEventHandler`), volume slider, fullscreen toggle — deliberately deferred (item 5)
 - Visual/manual QA pass of the Streams and Player screens (no `react-native-web` target or emulator was used in this environment)
 - Subtitle hash/sync extras — deferred per the doc's "known limitation" (§4.2.2)
+

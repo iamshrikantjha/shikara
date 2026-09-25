@@ -5,6 +5,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.UiThreadUtil
 
 /**
  * JS-facing native module implementing docs/03-Phase3-Torrent-Streaming.md
@@ -17,6 +18,15 @@ import com.facebook.react.bridge.ReactMethod
  * rather than pushed as events, matching [com.shikara.torrent.TorrentModule]'s
  * getStatus() polling pattern and avoiding any Old/New-Architecture event
  * dispatch divergence.
+ *
+ * Every call below is marshaled onto the UI thread via [UiThreadUtil]: RN's
+ * `@ReactMethod`s run on a background bridge thread, but ExoPlayer requires
+ * every interaction to happen on the same thread it was created on —
+ * [PlayerViewManager.createViewInstance] creates it on the UI thread (React
+ * Native guarantees view-manager lifecycle methods run there), so all access
+ * here must hop back to that same thread or ExoPlayer throws
+ * "Player is accessed on the wrong thread" (verified against a real crash on
+ * a physical/emulated device — this isn't a theoretical concern).
  */
 @UnstableApi
 class PlayerModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
@@ -25,52 +35,52 @@ class PlayerModule(reactContext: ReactApplicationContext) : ReactContextBaseJava
 
     @ReactMethod
     fun load(torrentId: String, fileIndex: Int, subtitleUrl: String?, subtitleLang: String?) {
-        PlayerBridge.load(torrentId, fileIndex, subtitleUrl, subtitleLang)
+        UiThreadUtil.runOnUiThread { PlayerBridge.load(torrentId, fileIndex, subtitleUrl, subtitleLang) }
     }
 
     // Stream.type === "direct" (docs §4.1.3) — no torrent engine involved.
     @ReactMethod
     fun loadDirect(url: String, subtitleUrl: String?, subtitleLang: String?) {
-        PlayerBridge.loadDirect(url, subtitleUrl, subtitleLang)
+        UiThreadUtil.runOnUiThread { PlayerBridge.loadDirect(url, subtitleUrl, subtitleLang) }
     }
 
     @ReactMethod
     fun play() {
-        PlayerBridge.play()
+        UiThreadUtil.runOnUiThread { PlayerBridge.play() }
     }
 
     @ReactMethod
     fun pause() {
-        PlayerBridge.pause()
+        UiThreadUtil.runOnUiThread { PlayerBridge.pause() }
     }
 
     @ReactMethod
     fun stop() {
-        PlayerBridge.stop()
+        UiThreadUtil.runOnUiThread { PlayerBridge.stop() }
     }
 
     @ReactMethod
     fun seek(positionMs: Double) {
-        PlayerBridge.seek(positionMs.toLong())
+        UiThreadUtil.runOnUiThread { PlayerBridge.seek(positionMs.toLong()) }
     }
 
     @ReactMethod
     fun setQuality() {
-        PlayerBridge.setQuality()
+        UiThreadUtil.runOnUiThread { PlayerBridge.setQuality() }
     }
 
     @ReactMethod
     fun setAudioTrack(languageCode: String) {
-        PlayerBridge.setAudioTrack(languageCode)
+        UiThreadUtil.runOnUiThread { PlayerBridge.setAudioTrack(languageCode) }
     }
 
     @ReactMethod
     fun setSubtitle(subtitleUrl: String?, subtitleLang: String?) {
-        PlayerBridge.setSubtitle(subtitleUrl, subtitleLang)
+        UiThreadUtil.runOnUiThread { PlayerBridge.setSubtitle(subtitleUrl, subtitleLang) }
     }
 
     @ReactMethod
     fun getState(promise: Promise) {
-        promise.resolve(PlayerBridge.getState())
+        UiThreadUtil.runOnUiThread { promise.resolve(PlayerBridge.getState()) }
     }
 }

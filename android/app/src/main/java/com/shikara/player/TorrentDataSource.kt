@@ -9,6 +9,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import com.shikara.torrent.TorrentSession
+import java.io.File
 import java.io.RandomAccessFile
 import kotlin.math.min
 
@@ -49,9 +50,36 @@ class TorrentDataSource : BaseDataSource(/* isNetwork= */ false) {
         val info = TorrentSession.getStreamFile(id, idx)
             ?: throw DataSourceException(PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND)
 
-        val f = RandomAccessFile(info.filePath, "r")
-        file = f
-        f.seek(dataSpec.position)
+        // Find the piece covering the requested read position.
+        val startPiece = TorrentSession.pieceIndexForFileOffset(id, idx, dataSpec.position)
+            ?: throw DataSourceException(PlaybackException.ERROR_CODE_IO_UNSPECIFIED)
+
+        // Await the initial piece so libtorrent creates and writes the sparse file on disk,
+        // avoiding FileNotFoundException on unallocated storage.
+        if (!TorrentSession.awaitPiece(id, startPiece, PIECE_WAIT_TIMEOUT_MS)) {
+            throw DataSourceException(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT)
+        }
+
+        // Brief retry to ensure filesystem visibility once the piece has been written
+        val diskFile = File(info.filePath)
+        var attempts = 0
+        var f: RandomAccessFile? = null
+        while (attempts < 20 && f == null) {
+            try {
+                if (diskFile.exists()) {
+                    f = RandomAccessFile(diskFile, "r")
+                } else {
+                    Thread.sleep(50)
+                }
+            } catch (_: Exception) {
+                Thread.sleep(50)
+            }
+            attempts++
+        }
+
+        val finalFile = f ?: RandomAccessFile(info.filePath, "r")
+        file = finalFile
+        finalFile.seek(dataSpec.position)
         filePosition = dataSpec.position
         bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) dataSpec.length else info.fileSize - dataSpec.position
         if (bytesRemaining < 0) {

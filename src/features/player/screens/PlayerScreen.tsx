@@ -141,8 +141,8 @@ export function PlayerScreen({ route, navigation }: Props) {
         <View style={styles.center}>
           <Text style={styles.message}>{message}</Text>
           <View style={styles.actionRow}>
-            <Button label="Switch Source" onPress={switchSource} />
-            <Button label="Back" variant="secondary" onPress={() => navigation.goBack()} />
+            <Button label="Switch Source" textColor="#fff" onPress={switchSource} />
+            <Button label="Back" variant="secondary" textColor="#fff" onPress={() => navigation.goBack()} />
           </View>
         </View>
       </View>
@@ -155,15 +155,27 @@ export function PlayerScreen({ route, navigation }: Props) {
 
       {isBuffering && (
         <View style={styles.center}>
-          <Text style={styles.message}>Buffering…</Text>
+          <Text style={styles.message}>
+            {torrentStatus?.state === 'downloadingMetadata'
+              ? 'Resolving stream metadata…'
+              : torrentStatus?.state === 'checkingFiles' || torrentStatus?.state === 'checkingResumeData'
+                ? 'Checking files…'
+                : 'Buffering stream…'}
+          </Text>
           {torrentStatus && (
             <>
-              <Text style={styles.subtext}>{formatSpeed(torrentStatus.downloadSpeed)}</Text>
-              <Text style={styles.subtext}>{torrentStatus.peers} peers</Text>
-              <Text style={styles.subtext}>{Math.round(torrentStatus.progress * 100)}% buffered</Text>
+              {torrentStatus.state !== 'downloadingMetadata' && (
+                <Text style={styles.subtext}>{formatSpeed(torrentStatus.downloadSpeed)}</Text>
+              )}
+              <Text style={styles.subtext}>
+                {torrentStatus.peers} {torrentStatus.peers === 1 ? 'peer' : 'peers'} connected
+              </Text>
+              {torrentStatus.state !== 'downloadingMetadata' && (
+                <Text style={styles.subtext}>{Math.round(torrentStatus.progress * 100)}% buffered</Text>
+              )}
             </>
           )}
-          <Button label="Switch Source" variant="secondary" onPress={switchSource} />
+          <Button label="Switch Source" variant="secondary" textColor="#fff" onPress={switchSource} />
         </View>
       )}
 
